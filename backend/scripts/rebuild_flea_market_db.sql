@@ -1,8 +1,17 @@
+-- =====================================================================
+-- flea_market_db 전체 재생성 스크립트 (구조만, 데이터 없음)
+--   기존 flea_market_db 를 통째로 삭제하고 최신 스키마로 다시 만듭니다.
+--   ⚠️ 실행하면 flea_market_db 안의 모든 데이터가 사라집니다.
+--   실행:  mysql -u root -p < rebuild_flea_market_db.sql
+-- =====================================================================
+
+DROP DATABASE IF EXISTS `flea_market_db`;
+
 CREATE DATABASE  IF NOT EXISTS `flea_market_db` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 USE `flea_market_db`;
 -- MySQL dump 10.13  Distrib 8.0.45, for Win64 (x86_64)
 --
--- Host: 192.168.0.229    Database: flea_market_db
+-- Host: 127.0.0.1    Database: flea_market_db2
 -- ------------------------------------------------------
 -- Server version	8.4.10
 
@@ -275,3 +284,40 @@ CREATE TABLE `users` (
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- Dump completed on 2026-08-28  8:42:18
+
+
+-- =====================================================================
+-- [보강] market_booth_types — 원본 덤프에 빠져 있던 테이블
+--   backend/utills/boothTypes.js, marketCancellation.js 가 사용합니다.
+--   없으면 부스 종류(A/B/C) 기능이 통째로 비활성화됩니다.
+-- =====================================================================
+USE `flea_market_db`;
+
+DROP TABLE IF EXISTS `market_booth_types`;
+CREATE TABLE `market_booth_types` (
+  `boothTypeId` int NOT NULL AUTO_INCREMENT,
+  `marketId` int NOT NULL,
+  `name` varchar(50) NOT NULL COMMENT '부스 종류 이름 (예: A타입, B타입)',
+  `price` int NOT NULL DEFAULT '0' COMMENT '이 종류의 부스 가격',
+  `capacity` int NOT NULL DEFAULT '0' COMMENT '종류별 정원, 0이면 제한 없음',
+  `sortOrder` int NOT NULL DEFAULT '0' COMMENT '주최자가 정한 노출 순서',
+  `isActive` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0이면 신청 화면에서 숨김',
+  PRIMARY KEY (`boothTypeId`),
+  KEY `idx_booth_types_market` (`marketId`),
+  CONSTRAINT `market_booth_types_ibfk_1`
+    FOREIGN KEY (`marketId`) REFERENCES `markets` (`marketId`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- applications.boothTypeId 가 실제 부스 종류를 가리키도록 FK 연결
+ALTER TABLE `applications`
+  ADD CONSTRAINT `applications_ibfk_3`
+  FOREIGN KEY (`boothTypeId`) REFERENCES `market_booth_types` (`boothTypeId`)
+  ON DELETE SET NULL;
+
+-- =====================================================================
+-- 결과 확인
+-- =====================================================================
+SELECT TABLE_NAME AS '생성된 테이블'
+  FROM information_schema.TABLES
+ WHERE TABLE_SCHEMA = 'flea_market_db'
+ ORDER BY TABLE_NAME;

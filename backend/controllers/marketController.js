@@ -5,6 +5,8 @@ import pool from '../config/db.js';
 // [중복 부스 신청 안내] 신청자 목록에 "이 판매자가 이 마켓에 몇 칸"을 붙입니다.
 import { attachDuplicateToMarketApplications, summarizeDuplicates } from '../utills/duplicateApplication.js';
 import { createNotification, createNotifications } from '../services/notificationService.js';
+// [신규 마켓 알림] 관심 지역을 등록한 판매자를 골라냅니다.
+import { findNewMarketRecipients } from '../utills/notificationSettings.js';
 
 // GET /api/markets?region=&sort=latest|eventDate|priceLow&includeExpired=
 export async function getMarketList(req, res) {
@@ -94,7 +96,7 @@ export async function getMarketDetail(req, res) {
 // POST /api/markets (로그인 필요, 주최자)
 export async function createMarket(req, res) {
   const { userId } = req.user;
-  let { title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplication, boothPrice_origin } = req.body;
+  let { title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplication, allowOvercapacity, boothPrice_origin } = req.body;
   //console.log(req.body);
 
   if (!title || !eventDate_min || !eventDate_max || !locationName) {
@@ -113,14 +115,46 @@ export async function createMarket(req, res) {
   try {
     // [추가] 판매자 중복 신청 허용 여부. 값이 안 오면 기존 동작과 동일하게 허용(1)합니다.
     const allowDuplicateApplicationVal = allowDuplicateApplication === undefined ? 1 : (allowDuplicateApplication ? 1 : 0);
+    // [초과 신청 허용] 수정 화면에는 있는데 등록 화면에만 빠져 있었습니다.
+    //   그래서 마켓을 만들 때는 항상 0(불가)으로 생성되고,
+    //   주최자가 켜려면 만든 뒤 수정 화면에 다시 들어가야 했습니다.
+    //   기본값은 0(초과 불가) — 기존 동작과 같습니다.
+    const allowOvercapacityVal = allowOvercapacity === undefined ? 0 : (allowOvercapacity ? 1 : 0);
     boothPrice_origin = boothPrice;
     const [result] = await pool.query(
-      `INSERT INTO markets (hostId, title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants,recruitmentDate_min,recruitmentDate_max,allowDuplicateApplication , boothPrice_origin)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?)`,
-      [userId, title, description || '', marketImage || null, locationName, region || null, latitude || 0, longitude || 0, eventDate_min, eventDate_max, boothPrice || 0, isExpired || 0, maxparticipants || 9999, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplicationVal, boothPrice_origin]
+      `INSERT INTO markets (hostId, title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants,recruitmentDate_min,recruitmentDate_max,allowDuplicateApplication ,allowOvercapacity, boothPrice_origin)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?, ?)`,
+      [userId, title, description || '', marketImage || null, locationName, region || null, latitude || 0, longitude || 0, eventDate_min, eventDate_max, boothPrice || 0, isExpired || 0, maxparticipants || 9999, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplicationVal, allowOvercapacityVal, boothPrice_origin]
     );
 
     //console.log('req.body 전체:', req.body);
+
+    // [신규 마켓 알림] 관심 지역이 맞는 판매자에게 알립니다.
+    //   지역을 등록하지 않은 사람은 "모든 지역" 으로 보고 전부 받습니다.
+    //   발송량이 커질 수 있어 세 가지를 지켰습니다:
+    //     - 모집 중인 마켓만 (isExpired=0). 지난 마켓을 옮겨 담는 경우 알리지 않습니다.
+    //     - 주최자 본인은 제외
+    //     - 실패해도 등록 응답을 막지 않음 (알림 때문에 마켓 등록이 실패하면 안 됩니다)
+    if (!Number(isExpired)) {
+      try {
+        const targets = await findNewMarketRecipients(pool, region || '', userId);
+        if (targets.length > 0) {
+          const when = eventDate_min === eventDate_max
+            ? eventDate_min
+            : `${eventDate_min} ~ ${eventDate_max}`;
+          await createNotifications(targets.map((uid) => ({
+            userId: uid,
+            audience: 'seller',
+            type: 'new_market',
+            title: '관심 지역에 새 마켓이 열렸어요',
+            message: `「${title}」 · ${when} · ${locationName || region || ''}`,
+            marketId: result.insertId,
+          })));
+        }
+      } catch (notifyError) {
+        console.error('신규 마켓 알림 실패(등록은 완료됨):', notifyError.message);
+      }
+    }
 
     return res.status(201).json({
       success: true,
@@ -147,7 +181,16 @@ export async function updateMarketStatus(req, res) {
   } = req.body;
 
   try {
-    const [rows] = await pool.query('SELECT hostId FROM markets WHERE marketId = ?', [marketId]);
+    // [변경 알림] 무엇이 바뀌었는지 알려면 바꾸기 전 값이 필요합니다.
+    //   hostId 만 읽던 것을 필요한 필드까지 함께 읽도록 넓혔습니다.
+    const [rows] = await pool.query(
+      `SELECT hostId, title,
+              DATE_FORMAT(eventDate_min, '%Y-%m-%d') AS eventDate_min,
+              DATE_FORMAT(eventDate_max, '%Y-%m-%d') AS eventDate_max,
+              locationName, isExpired
+         FROM markets WHERE marketId = ?`,
+      [marketId]
+    );
     if (rows.length === 0) {
       return res.status(404).json({ success: false, data: null, message: '해당 마켓을 찾을 수 없습니다.' });
     }
@@ -187,6 +230,45 @@ export async function updateMarketStatus(req, res) {
 
     values.push(marketId);
     await pool.query(`UPDATE markets SET ${fields.join(', ')} WHERE marketId = ?`, values);
+
+    // [변경 알림] 날짜와 장소만 알립니다.
+    //   설명이나 이미지가 바뀔 때마다 알리면 알림이 의미를 잃습니다.
+    //   날짜가 바뀌면 못 오게 되는 사람이 생기고, 장소가 바뀌면 엉뚱한 곳으로 갑니다.
+    //   이 알림은 market_change 묶음이라 설정에서 끌 수 없습니다.
+    try {
+      const before = rows[0];
+      const changes = [];
+      if (eventDate_min && eventDate_min !== before.eventDate_min) {
+        changes.push(`행사 시작일 ${before.eventDate_min} → ${eventDate_min}`);
+      }
+      if (eventDate_max && eventDate_max !== before.eventDate_max) {
+        changes.push(`행사 종료일 ${before.eventDate_max} → ${eventDate_max}`);
+      }
+      if (locationName && locationName !== before.locationName) {
+        changes.push(`장소 ${before.locationName} → ${locationName}`);
+      }
+
+      if (changes.length > 0) {
+        // 자리를 확보한 사람에게만 알립니다. 반려·취소된 사람에게는 의미가 없습니다.
+        const [sellers] = await pool.query(
+          `SELECT DISTINCT sellerId FROM applications
+            WHERE marketId = ? AND status IN ('Pending', 'Approved', 'Paid')`,
+          [marketId]
+        );
+        if (sellers.length > 0) {
+          await createNotifications(sellers.map((s) => ({
+            userId: s.sellerId,
+            audience: 'seller',
+            type: 'market_changed',
+            title: '참가 예정 마켓 정보가 바뀌었어요',
+            message: `「${title || before.title}」 ${changes.join(' · ')}`,
+            marketId: Number(marketId),
+          })));
+        }
+      }
+    } catch (notifyError) {
+      console.error('마켓 변경 알림 실패(수정은 완료됨):', notifyError.message);
+    }
 
     return res.status(200).json({ success: true, data: null, message: '마켓 정보가 수정되었습니다.' });
   } catch (error) {

@@ -1,0 +1,69 @@
+/* frontend/common/css/notification-settings.css — 알림 설정 화면 */
+
+.ns-wrap { max-width: 680px; margin: 0 auto; }
+
+.ns-banner { border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-weight: 600; border: 2px solid transparent; }
+.ns-banner.ok    { background: #e7f6ec; border-color: #2f8f4e; color: #1d5f34; }
+.ns-banner.error { background: #fdeaea; border-color: #c0392b; color: #922; }
+.ns-banner.warn  { background: #fdf3e0; border-color: #E0912F; color: #8a5407; }
+
+.ns-list { display: flex; flex-direction: column; gap: 10px; }
+.ns-loading { color: #6b5a4a; }
+
+.ns-item {
+  background: #fff; border: 1px solid #d9cdb8; border-radius: 12px; padding: 14px;
+}
+.ns-head { display: flex; align-items: center; gap: 12px; }
+.ns-texts { flex: 1 1 auto; min-width: 0; }
+.ns-label { font-weight: 700; font-size: .98rem; }
+.ns-desc { color: #6b5a4a; font-size: .84rem; margin-top: 2px; line-height: 1.45; }
+
+.ns-lock {
+  background: #2A1C12; color: #FBF6EC; border-radius: 999px;
+  padding: 2px 9px; font-size: .72rem; font-weight: 700; margin-left: 6px;
+}
+
+/* 토글 바 */
+.ns-toggle { position: relative; flex: 0 0 auto; width: 52px; height: 30px; }
+.ns-toggle input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.ns-track {
+  position: absolute; inset: 0; background: #cfc4b2; border-radius: 999px;
+  transition: background .18s; pointer-events: none;
+}
+.ns-track::after {
+  content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px;
+  background: #fff; border-radius: 50%; transition: transform .18s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+.ns-toggle input:checked + .ns-track { background: #2f8f4e; }
+.ns-toggle input:checked + .ns-track::after { transform: translateX(22px); }
+.ns-toggle input:disabled { cursor: not-allowed; }
+.ns-toggle input:disabled + .ns-track { background: #2f8f4e; opacity: .5; }
+.ns-toggle input:focus-visible + .ns-track { outline: 3px solid #E0912F; outline-offset: 2px; }
+
+/* 하위 옵션 (시간 / 지역) */
+.ns-sub {
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed #d9cdb8;
+}
+.ns-sub[hidden] { display: none; }
+
+.ns-lead-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ns-lead-row input[type="range"] { flex: 1 1 180px; }
+.ns-lead-value {
+  font-weight: 700; font-variant-numeric: tabular-nums;
+  background: #f1ece2; border-radius: 8px; padding: 4px 10px; min-width: 74px; text-align: center;
+}
+
+.ns-region-mode { display: flex; gap: 14px; margin-bottom: 10px; flex-wrap: wrap; }
+.ns-region-mode label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: .9rem; }
+
+.ns-regions { display: flex; flex-wrap: wrap; gap: 7px; }
+.ns-region {
+  border: 2px solid #2A1C12; background: #fff; border-radius: 999px;
+  padding: 5px 13px; font-size: .86rem; font-weight: 600; cursor: pointer;
+}
+.ns-region.on { background: #E0912F; }
+.ns-region-empty { color: #c0392b; font-size: .84rem; margin-top: 8px; }
+
+.ns-actions { display: flex; align-items: center; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+.ns-hint { color: #6b5a4a; font-size: .85rem; }

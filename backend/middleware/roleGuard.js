@@ -94,6 +94,17 @@ export const HOST_ONLY_ENDPOINTS = [
 
   // ── 주최자 통계 ────────────────────────────────────────────
   { method: 'GET', pattern: /^\/users\/me\/activity\/?$/ },                   // 마이페이지 활동 도넛
+
+  // ── 현장 QR 체크인 ─────────────────────────────────────────
+  //   주의: GET /checkin/pass 는 "판매자"가 자기 입장 QR 을 받는 API 이므로 여기 넣으면 안 됩니다.
+  //         GET /checkin/stats/:userId 는 프로필 노쇼 표기용 공개 API 라 역시 제외합니다.
+  { method: 'POST', pattern: /^\/checkin\/sessions\/?$/ },                     // 체크인 시작
+  { method: 'POST', pattern: /^\/checkin\/schedule\/?$/ },                     // 체크인 시간대 일괄 예약
+  { method: 'GET', pattern: /^\/checkin\/sessions\/?$/ },                      // 체크인 현황
+  { method: 'PATCH', pattern: /^\/checkin\/sessions\/\d+\/close\/?$/ },        // 체크인 종료
+  { method: 'POST', pattern: /^\/checkin\/scan\/?$/ },                         // QR/코드 스캔 처리
+  { method: 'POST', pattern: /^\/checkin\/manual\/?$/ },                       // 명단에서 직접 출석
+  { method: 'DELETE', pattern: /^\/checkin\/records\/\d+\/?$/ },               // 출석 취소
 ];
 
 /** 경로/메서드가 주최자 전용 목록에 해당하는지. (verify-role-policy.js 에서도 사용) */

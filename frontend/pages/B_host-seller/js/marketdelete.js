@@ -525,6 +525,10 @@ function renderMarketItem(market) {
          환불이 제대로 나갔는지 확인하러 들어갈 수조차 없었습니다.
          수정·취소만 잠그고 조회는 열어둡니다. -->
     <a class="btn btn-sage btn-sm" href="market-detail?marketId=${id}">보러가기</a>
+    <!-- [현장 QR 체크인] 개최일에 판매자 QR 을 찍어 출석을 확인하는 화면.
+         취소된 마켓에서는 열 이유가 없으므로 잠급니다. -->
+    <a class="btn btn-outline btn-sm" href="checkin-scan.html?marketId=${id}"
+       ${statusKey === 'cancel' ? 'aria-disabled="true" tabindex="-1" title="취소된 마켓이에요." onclick="return false;"' : ''}>현장 체크인</a>
   </div>
 
   ${renderBoothRecruitGauge(market)}
@@ -591,34 +595,22 @@ async function handleDeleteClick(marketId) {
   hideAlert();
   if (!marketId) return;
 
-  const confirmed = window.confirm(
-    '정말 이 마켓을 취소하시겠습니까? 취소 후에는 되돌릴 수 없어요.',
-  );
-  if (!confirmed) return;
+  // [환불 확인] 미리보기 → 「예 / 아니오」 확인 창 → 실행까지 공용 모듈이 처리합니다.
+  //   마켓 상세페이지의 취소 버튼도 같은 함수를 부릅니다.
+  //   환불 금액 계산이 두 곳으로 갈리면 한쪽만 고치는 일이 생깁니다.
+  if (!window.MarketCancel) {
+    renderAlert('취소 모듈을 불러오지 못했어요. 새로고침 후 다시 시도해주세요.');
+    return;
+  }
 
-  // 미리보기 → 확인 창 → 실행까지 공용 모듈이 처리합니다.
-  //const result = await MarketCancel.run(marketId);
-
-  // 사용자가 「아니오」를 눌렀으면 조용히 끝냅니다.
-  // if (!result.cancelled && !result.message) return;
-
-  // renderAlert(result.message, result.type);
-
-  // if (result.cancelled) {
-  //   if (String(expandedId) === String(marketId)) expandedId = null;
-  //   await loadMyMarkets();
-  try {
-    const res = await deleteMarket(marketId);
-    if (res && res.success) {
-      renderAlert('마켓이 취소되었습니다.', 'success');
+  await window.MarketCancel.run(marketId, {
+    onSuccess: async (res) => {
+      renderAlert(res?.message || '마켓이 취소되었습니다.', 'success');
       if (String(expandedId) === String(marketId)) expandedId = null;
       await loadMyMarkets();
-    } else {
-      renderAlert(res?.message || '취소에 실패했어요.');
-    }
-  } catch (err) {
-    renderAlert('서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.');
-  }
+    },
+    onError: (msg) => renderAlert(msg || '취소에 실패했어요.'),
+  });
 }
 
 // ---------- 필터 ----------

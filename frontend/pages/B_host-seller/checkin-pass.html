@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>입장 QR - 플리마켓</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../../common/css/style.css" />
+    <link rel="stylesheet" href="css/host-seller.css?v=2" />
+    <link rel="stylesheet" href="../../common/css/checkin.css?v=5" />
+    <script src="../../common/js/role-routing.js?v=3"></script>
+    <link rel="stylesheet" href="../../common/css/global-nav.css?v=3" />
+    <script src="../../common/js/global-nav.js?v=3" defer></script>
+  </head>
+
+  <body>
+    <div class="page-wrap">
+      <header class="nav">
+        <a href="../../index.html" class="brand"><span class="pin-dot" aria-hidden="true"></span>플리마켓</a>
+        <a href="../A_auth-main/mypage.html" class="link-ghost">마이페이지</a>
+      </header>
+
+      <div class="panel chk-wrap">
+        <span class="pin" aria-hidden="true"></span>
+        <h1>입장 QR</h1>
+        <p class="panel-sub">
+          현장에서 이 화면을 주최자에게 보여주세요. 주최자가 QR 을 찍으면 출석 처리돼요.
+        </p>
+
+        <div id="chk-banner" class="chk-banner neutral">입장 QR 을 불러오는 중이에요…</div>
+
+        <!-- 마켓 / 날짜 -->
+        <div class="chk-card" id="chk-market-card" hidden>
+          <h2 id="chk-market-title">-</h2>
+          <p class="chk-muted" id="chk-market-meta">-</p>
+        </div>
+
+        <!-- QR + 코드 -->
+        <div class="chk-card" id="chk-qr-card" hidden>
+          <div class="chk-qr-box">
+            <div class="chk-qr-frame"><div id="chk-qr"></div></div>
+          </div>
+
+          <div class="chk-timer-bar"><div class="chk-timer-fill" id="chk-timer-fill"></div></div>
+          <p class="chk-code-hint" id="chk-timer-text">QR 은 몇 초마다 자동으로 새로 만들어져요.</p>
+
+          <hr style="border:none;border-top:1px dashed #d9cdb8;margin:14px 0" />
+
+          <p class="chk-code-hint">주최자 폰 카메라가 안 될 때는 이 숫자를 불러 주세요</p>
+          <div class="chk-code" id="chk-code">------</div>
+          <p class="chk-code-hint" id="chk-code-hint">&nbsp;</p>
+        </div>
+
+        <!-- 내 부스 -->
+        <div class="chk-card" id="chk-booth-card" hidden>
+          <h2>내 부스</h2>
+          <ul class="chk-list" id="chk-booth-list"></ul>
+        </div>
+
+        <div class="chk-actions">
+          <button type="button" class="btn btn-outline btn-sm" id="chk-refresh">새로고침</button>
+          <a class="btn btn-sage btn-sm" href="mybooth.html">내 부스 관리로</a>
+        </div>
+      </div>
+    </div>
+
+    <script src="../../common/js/api.js?v=3"></script>
+    <script src="../../common/js/vendor/qrcode-generator.js"></script>
+    <script src="js/checkin-pass.js?v=2"></script>
+  </body>
+</html>

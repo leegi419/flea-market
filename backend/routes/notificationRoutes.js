@@ -7,6 +7,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from '../controllers/notificationController.js';
+import { getNotificationSettings, updateNotificationSettings } from '../controllers/notificationSettingsController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -53,6 +54,36 @@ router.get('/', authenticateToken, getNotifications);
  *             schema: { $ref: '#/components/schemas/ApiEnvelope' }
  */
 router.get('/unread-count', authenticateToken, getUnreadCount);
+
+/**
+ * @swagger
+ * /notifications/settings:
+ *   get:
+ *     summary: 내 알림 설정 조회
+ *     description: 묶음별 on/off, 관심 지역, 마감 사전 알림 시간(1~24)을 함께 돌려줍니다.
+ *     tags: [Notifications]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: 조회 성공 }
+ *   put:
+ *     summary: 내 알림 설정 저장
+ *     tags: [Notifications]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               categories: { type: object, example: { comment: false, new_market: true } }
+ *               regions: { type: array, items: { type: string }, example: ['경기','서울'] }
+ *               leadHours: { type: integer, minimum: 1, maximum: 24, example: 3 }
+ *     responses:
+ *       200: { description: 저장됨 }
+ */
+// 주의: '/:notificationId/read' 보다 먼저 등록해야 settings 가 id 로 해석되지 않습니다.
+router.get('/settings', authenticateToken, getNotificationSettings);
+router.put('/settings', authenticateToken, updateNotificationSettings);
 
 /**
  * @swagger

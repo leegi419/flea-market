@@ -480,9 +480,12 @@ function renderBoothCard(a) {
           <div class="item-card-meta">주최자: ${ProfileLink.html(a.hostId, a.hostNickname)}</div>
         </div>
         <span class="status-tag ${STATUS_CLASS[displayStatus] || 'pending'}">${STATUS_LABEL[displayStatus] || displayStatus}</span>
+        ${renderCheckinDoneBadge(a)}
       </div>
 
-      ${renderBoothRecruitGauge(a)}
+      ${renderMarketCancelReason(a)}
+
+    ${renderBoothRecruitGauge(a)}
 
     <div class="item-card-actions">
       <div class="action-group">
@@ -493,6 +496,7 @@ function renderBoothCard(a) {
       : ''
     }
     ${(status === 'Approved' || status === 'Paid') ? renderReviewTrigger(a) : ''}
+    ${renderCheckinPassLink(a)}
     </div>
     ${status === 'Paid'
       ? `
@@ -572,6 +576,74 @@ function isPaymentTimedOut(a) {
   const due = parsePaymentDue(a.paymentDueAt);
   if (!due) return true; // 기한 정보가 없으면(결제 완료 후 NULL 포함) 타임아웃으로 취급
   return due.getTime() - Date.now() <= 0;
+}
+
+// [현장 QR 체크인] 내 출석 기록 (applicationId -> 체크인 정보)
+//   주최자가 현장에서 QR 을 찍으면 그 즉시 서버에 기록됩니다.
+//   여기서는 그 기록을 읽어 카드에 「참여완료 + 찍은 시각」으로 보여줍니다.
+//   신청 목록 API(getMyBoothList)를 고치지 않고 따로 불러오는 이유는
+//   그 API 가 팀 공용이라, 여기서 컬럼을 늘리면 다른 화면까지 영향을 받기 때문입니다.
+let checkinByApplication = new Map();
+
+async function loadCheckinRecords() {
+  try {
+    const res = await callApi('/checkin/my');
+    if (!res || !res.success || !Array.isArray(res.data)) return;
+    checkinByApplication = new Map(
+      res.data.map((c) => [Number(c.applicationId), c])
+    );
+  } catch (err) {
+    // 출석 표시 하나 때문에 부스 목록 전체가 안 뜨면 안 됩니다.
+    console.error('[체크인] 출석 기록을 불러오지 못했어요:', err);
+  }
+}
+
+/** '2026-08-29 10:14:22' / ISO 어느 쪽이 와도 "8/29 10:14" 로 */
+function formatCheckinTime(value) {
+  if (!value) return '';
+  const d = new Date(String(value).replace(' ', 'T'));
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// [현장 QR 체크인] 「참여완료」 배지.
+//   주최자가 QR 을 찍은 뒤 이 화면을 새로고침하면 나타납니다.
+//   시각을 함께 보여주는 이유 — 나중에 "안 왔다/왔다" 다툼이 생겼을 때
+//   판매자도 자기 화면에서 몇 시에 확인됐는지 근거를 댈 수 있어야 합니다.
+function renderCheckinDoneBadge(a) {
+  const rec = checkinByApplication.get(Number(a.applicationId ?? a.id));
+  if (!rec) return '';
+  const when = formatCheckinTime(rec.checkedInAt);
+  const how = rec.method === 'manual' ? '주최자 확인'
+            : rec.method === 'code' ? '코드 확인'
+            : 'QR 확인';
+  return `<span class="status-tag checkin-done" title="${how} · ${when}">참여완료 ${when}</span>`;
+}
+
+// [마켓 취소 사유] 판매자가 "왜 취소됐는지" 를 자기 화면에서 바로 볼 수 있어야 합니다.
+//   주최자에게 따로 묻지 않아도 되고, 나중에 분쟁이 생겼을 때 근거가 됩니다.
+//   사유가 없으면(사유 기능 이전에 취소된 마켓) 줄 자체를 숨깁니다 —
+//   "사유 없음" 이라고 적으면 주최자가 안 적은 것처럼 보입니다.
+function renderMarketCancelReason(a) {
+  if (Number(a.marketIsExpired) !== 2) return '';
+  if (!a.marketCancelReason) return '';
+  const at = a.marketCancelledAt ? formatCheckinTime(a.marketCancelledAt) : '';
+  return `<p class="booth-cancel-reason">
+    <b>주최자 취소 사유</b> ${escapeHtml(a.marketCancelReason)}${at ? ` <span>(${at})</span>` : ''}
+  </p>`;
+}
+
+// [현장 QR 체크인] 「입장 QR」 진입 버튼.
+//   현장에서 판매자가 이 화면을 열어 주최자에게 보여주고, 주최자가 QR 을 찍으면 출석이 기록됩니다.
+//   승인·결제된 부스에만 나오고, 마켓이 취소됐으면 숨깁니다.
+//   개최일이 아니어도 버튼은 보여줍니다 — 눌러 보면 화면이 "아직 시작 전"이라고 알려주는 편이,
+//   버튼이 아예 없어서 어디서 여는지 못 찾는 것보다 낫습니다.
+function renderCheckinPassLink(a) {
+  const status = a.status;
+  if (status !== 'Approved' && status !== 'Paid') return '';
+  if (Number(a.marketIsExpired) === 2) return '';
+  return `<a class="btn btn-mustard btn-sm" href="checkin-pass.html?marketId=${a.marketId}">입장 QR</a>`;
 }
 
 // 승인된 신청의 결제 영역: 결제 완료 / 타임아웃 / 결제하기+타이머 셋 중 하나만 렌더링
@@ -941,6 +1013,7 @@ async function loadMyBoothList() {
     const res = await getMyBoothList();
     if (res && res.success) {
       allApplications = res.data || [];
+      await loadCheckinRecords(); // [현장 QR 체크인] 참여완료 표시용 (실패해도 목록은 그림)
       applyStatusFilter();
     } else {
       wrap.innerHTML =

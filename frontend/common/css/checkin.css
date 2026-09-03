@@ -1,0 +1,175 @@
+/* frontend/common/css/checkin.css
+   [현장 QR 체크인] 판매자 입장 QR 화면 + 주최자 스캐너 화면 공용 스타일 */
+
+.chk-wrap { max-width: 720px; margin: 0 auto; }
+
+.chk-card {
+  background: #FBF6EC;
+  border: 2px solid #2A1C12;
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 14px;
+  box-shadow: 4px 4px 0 rgba(42, 28, 18, 0.18);
+}
+.chk-card h2 { margin: 0 0 6px; font-size: 1.05rem; }
+.chk-muted { color: #6b5a4a; font-size: .88rem; margin: 4px 0; }
+
+/* ── 상태 배너 ─────────────────────────────────────────── */
+.chk-banner {
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+  font-weight: 600; line-height: 1.5; border: 2px solid transparent;
+}
+.chk-banner.ok      { background: #e7f6ec; border-color: #2f8f4e; color: #1d5f34; }
+.chk-banner.warn    { background: #fdf3e0; border-color: #E0912F; color: #8a5407; }
+.chk-banner.error   { background: #fdeaea; border-color: #c0392b; color: #922; }
+.chk-banner.neutral { background: #f1ece2; border-color: #b9a894; color: #4a3a2a; }
+
+/* ── 판매자: QR ───────────────────────────────────────── */
+.chk-qr-box { text-align: center; padding: 10px 0 4px; }
+.chk-qr-box svg, .chk-qr-box img { width: min(260px, 70vw); height: auto; }
+.chk-qr-frame {
+  display: inline-block; background: #fff; padding: 12px;
+  border-radius: 12px; border: 2px solid #2A1C12;
+}
+.chk-qr-dim { opacity: .25; filter: grayscale(1); }
+
+.chk-code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 2.1rem; letter-spacing: .28em; font-weight: 700;
+  text-align: center; margin: 6px 0 2px; color: #2A1C12;
+}
+.chk-code-hint { text-align: center; font-size: .82rem; color: #6b5a4a; }
+
+.chk-timer-bar {
+  height: 6px; background: #e6ddcd; border-radius: 4px; overflow: hidden; margin: 10px 0 4px;
+}
+.chk-timer-fill { height: 100%; background: #E0912F; width: 100%; transition: width .9s linear; }
+
+/* ── 목록 (부스 / 명단) ───────────────────────────────── */
+.chk-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.chk-list li {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border: 1px solid #d9cdb8; border-radius: 10px;
+  margin-bottom: 8px; background: #fff;
+}
+.chk-list li.done { background: #f1f8f2; border-color: #9dc9a9; }
+.chk-list li.absent-final { background: #fdf1f1; border-color: #e0a9a4; }
+
+.chk-booth {
+  font-family: 'IBM Plex Mono', monospace; font-weight: 700;
+  background: #2A1C12; color: #FBF6EC; border-radius: 6px; padding: 2px 8px; font-size: .85rem;
+}
+.chk-name { font-weight: 600; }
+.chk-grow { flex: 1 1 auto; }
+.chk-tag { font-size: .78rem; border-radius: 999px; padding: 2px 9px; font-weight: 700; }
+.chk-tag.in     { background: #2f8f4e; color: #fff; }
+.chk-tag.out    { background: #e6ddcd; color: #6b5a4a; }
+.chk-tag.noshow { background: #c0392b; color: #fff; }
+.chk-tag.manual { background: #E0912F; color: #2A1C12; }
+
+/* ── 주최자: 스캐너 ───────────────────────────────────── */
+.chk-scanner { position: relative; background: #000; border-radius: 12px; overflow: hidden; }
+.chk-scanner video { width: 100%; display: block; max-height: 52vh; object-fit: cover; }
+.chk-scanner-guide {
+  position: absolute; inset: 12% 18%; border: 3px solid rgba(224, 145, 47, .95);
+  border-radius: 14px; pointer-events: none;
+}
+.chk-scan-result { min-height: 46px; }
+
+.chk-day-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 12px; }
+.chk-day-tab {
+  border: 2px solid #2A1C12; background: #fff; border-radius: 999px;
+  padding: 5px 13px; font-weight: 600; cursor: pointer; font-size: .86rem;
+}
+.chk-day-tab.active { background: #E0912F; }
+.chk-day-tab:disabled { opacity: .45; cursor: not-allowed; }
+
+.chk-stat-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+.chk-stat {
+  flex: 1 1 108px; background: #fff; border: 1px solid #d9cdb8;
+  border-radius: 10px; padding: 9px 10px; text-align: center;
+}
+.chk-stat b { display: block; font-size: 1.4rem; line-height: 1.2; }
+.chk-stat span { font-size: .78rem; color: #6b5a4a; }
+
+.chk-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.chk-code-input {
+  font-family: 'IBM Plex Mono', monospace; font-size: 1.25rem; letter-spacing: .18em;
+  width: 148px; text-align: center; padding: 8px; border: 2px solid #2A1C12; border-radius: 8px;
+}
+
+/* ── 프로필 노쇼 배지 ─────────────────────────────────── */
+.chk-noshow-num.is-bad { color: #c0392b; }
+
+@media (max-width: 560px) {
+  .chk-card { padding: 14px; }
+  .chk-code { font-size: 1.8rem; }
+}
+
+/* ── 내 부스 관리의 「참여완료」 배지 ─────────────────── */
+.status-tag.checkin-done {
+  background: #2f8f4e; color: #fff; border-color: #2f8f4e;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 판매자 프로필 참여/노쇼 도넛 ─────────────────────── */
+.chk-donut-box {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 14px; border-top: 1px dashed #d9cdb8;
+}
+.chk-donut { width: 132px; height: 132px; flex: 0 0 auto; }
+.chk-donut-rate { font-size: 26px; font-weight: 700; fill: #2A1C12; }
+.chk-donut-sub  { font-size: 11px; fill: #6b5a4a; }
+
+.chk-donut-legend { list-style: none; padding: 0; margin: 0; font-size: .9rem; }
+.chk-donut-legend li { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.chk-donut-legend b { font-variant-numeric: tabular-nums; }
+.chk-donut-legend .dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.chk-donut-legend .dot.ok      { background: #2f8f4e; }
+.chk-donut-legend .dot.bad     { background: #c0392b; }
+.chk-donut-legend .dot.neutral { background: #b9a894; }
+
+@media (max-width: 480px) { .chk-donut-box { justify-content: center; } }
+
+/* ── 체크인 시간 예약 입력 ────────────────────────────── */
+.chk-time-field {
+  display: flex; flex-direction: column; gap: 3px;
+  font-size: .8rem; color: #6b5a4a; font-weight: 600;
+}
+.chk-time-field input, .chk-time-field select {
+  border: 2px solid #2A1C12; border-radius: 8px; padding: 6px 8px;
+  font-size: .95rem; background: #fff;
+}
+
+/* ── 체크인 시간: 일괄 칸 + 날짜별 줄 ─────────────────── */
+.chk-bulk-row {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
+  background: #f6efe2; border: 1px dashed #c9b89f;
+  border-radius: 10px; padding: 10px; margin-bottom: 12px;
+}
+
+.chk-day-rows { display: flex; flex-direction: column; gap: 6px; }
+.chk-day-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 12px 1fr 92px 84px;
+  align-items: center; gap: 6px;
+  background: #fff; border: 1px solid #d9cdb8; border-radius: 9px; padding: 7px 9px;
+}
+.chk-day-row.locked { background: #f2ede4; opacity: .72; }
+.chk-day-label { font-weight: 700; font-size: .86rem; white-space: nowrap; }
+.chk-day-label em { font-style: normal; color: #6b5a4a; font-weight: 500; }
+.chk-day-tilde { text-align: center; color: #6b5a4a; }
+.chk-day-row input[type="time"], .chk-day-row select {
+  width: 100%; border: 1px solid #b9a894; border-radius: 6px; padding: 4px 5px; font-size: .86rem;
+}
+.chk-day-row input:disabled, .chk-day-row select:disabled { background: #e9e2d6; color: #8b7a68; }
+.chk-day-note { font-size: .74rem; color: #6b5a4a; text-align: right; }
+
+@media (max-width: 620px) {
+  .chk-day-row { grid-template-columns: 60px 1fr 10px 1fr; }
+  .chk-day-row select, .chk-day-note { grid-column: 2 / -1; }
+  .chk-day-note { text-align: left; }
+}
+
+/* 중도 이탈 조각 */
+.chk-donut-legend .dot.warn { background: #E0912F; }

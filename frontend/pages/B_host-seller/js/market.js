@@ -439,6 +439,9 @@ function handleMarketCreateSubmit() {
       longitude: document.getElementById('longitude').value || null,
       maxparticipants: maxParticipantsNum,
       allowDuplicateApplication: document.getElementById('allow-duplicate-application')?.checked ?? true,
+      // [초과 신청 허용] 수정 화면에는 있는데 등록 화면 payload 에만 빠져 있었습니다.
+      // 체크 안 하면 false = 정원이 차면 신청이 막힙니다. (기존 동작과 동일)
+      allowOvercapacity: document.getElementById('allow-overcapacity')?.checked || false,
       marketImage: document.getElementById('uploadedImagePath').value || null,
     };
 
@@ -1012,26 +1015,23 @@ function handleMarketCancelClick() {
     if (!marketId) return;
     hideAlert();
 
-    // [수정] 환불 미리보기 조회(cancel-preview) + 전용 확인 모달(MarketCancel.run) 제거.
-    //  「내 마켓 관리」(marketdelete.js handleDeleteClick)와 동일하게 window.confirm 후 바로 취소만 실행.
-    const confirmed = window.confirm(
-      '정말 이 마켓을 취소하시겠습니까? 취소 후에는 되돌릴 수 없어요.',
-    );
-    if (!confirmed) return;
+    // [환불 확인] 환불 예상 내역을 표로 보여주고 「예 / 아니오」를 받습니다.
+    //   절차는 common/js/market-cancel.js 한 곳에 있고,
+    //   「내 마켓 관리」도 같은 함수를 부릅니다. (금액 계산이 두 곳으로 갈리지 않게)
+    if (!window.MarketCancel) {
+      renderAlert('취소 모듈을 불러오지 못했어요. 새로고침 후 다시 시도해주세요.');
+      return;
+    }
 
-    try {
-      const res = await callApi(`/markets/closed/${marketId}`, { method: 'PATCH' });
-      if (res && res.success) {
-        renderAlert('마켓이 취소되었습니다.', 'success');
+    await window.MarketCancel.run(marketId, {
+      onSuccess: (res) => {
+        renderAlert(res?.message || '마켓이 취소되었습니다.', 'success');
         // 취소된 마켓이므로 관리 버튼을 감추고, 목록으로 돌아갈 시간을 줍니다.
         applyHostActionState({ isExpired: 2 });
         setTimeout(() => { window.location.href = 'mymarketpage'; }, 2500);
-      } else {
-        renderAlert(res?.message || '취소에 실패했어요.');
-      }
-    } catch (err) {
-      renderAlert('서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.');
-    }
+      },
+      onError: (msg) => renderAlert(msg || '취소에 실패했어요.'),
+    });
   });
 }
 

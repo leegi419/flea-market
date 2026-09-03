@@ -22,6 +22,8 @@ import { hostAreaGuard } from './middleware/roleGuard.js'; // [C-01] 판매자�
 import searchRoutes from './routes/searchRoutes.js';
 import { checkEnv, getCorsOrigins } from './config/envCheck.js'; // [보안·환경 정리] 환경변수 점검 + CORS 허용 목록
 import notificationRoutes from './routes/notificationRoutes.js'; // [추가] 알림(종 버튼)
+import checkinRoutes from './routes/checkinRoutes.js'; // [현장 QR 체크인] 주최자 QR 발급 + 판매자 스캔
+import { startNotificationScheduler } from './services/notificationScheduler.js'; // [예약 알림] 모집·결제 마감 임박
 
 
 dotenv.config();
@@ -69,6 +71,7 @@ app.use('/api/uploads', express.static(sellerUploadDir()));
 app.use('/api/uploads', express.static(profileUploadDir()));
 app.use('/api/search', searchRoutes);
 app.use('/api/notifications', notificationRoutes); // [추가] 알림(종 버튼)
+app.use('/api/checkin', checkinRoutes); // [현장 QR 체크인]
 
 // 🌐 http://localhost:5000 접속 시 DB 데이터를 HTML 표로 보여주는 라우터
 app.get('/', async (req, res) => {
@@ -239,6 +242,8 @@ async function updateExpiredMarkets() {
       WHERE eventDate_max < CURDATE() AND isExpired = 0
     `);
     console.log(`✅ 만료 마켓 갱신: ${result.affectedRows}개`);
+    // [예약 알림] 서버가 도는 동안 주기적으로 마감 임박 건을 검사합니다.
+    startNotificationScheduler();
   } catch (error) {
     console.error('❌ 만료 갱신 오류:', error);
   }

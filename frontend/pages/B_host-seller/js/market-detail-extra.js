@@ -38,6 +38,21 @@
     const isCancelled = Number(market.isExpired) === 2;
     const notice = document.getElementById('market-cancelled-notice');
     if (notice) notice.hidden = !isCancelled;
+
+    // [취소 사유] 왜 취소했는지를 기록으로 함께 보여줍니다.
+    //   사유가 없으면(사유 기능 이전에 취소된 마켓) 줄 자체를 숨깁니다.
+    //   "사유 없음" 이라고 적으면 주최자가 안 적은 것처럼 보입니다.
+    const reasonEl = document.getElementById('market-cancel-reason');
+    if (reasonEl) {
+      const reason = market.cancelReason;
+      if (isCancelled && reason) {
+        const at = market.cancelledAt ? formatCancelledAt(market.cancelledAt) : '';
+        reasonEl.textContent = '취소 사유: ' + reason + (at ? ` (${at})` : '');
+        reasonEl.hidden = false;
+      } else {
+        reasonEl.hidden = true;
+      }
+    }
     // [추가] 취소된 마켓에서는 신청자 목록의 승인·반려 버튼을 감춥니다.
     //   신청자 목록은 market.js 가 나중에 비동기로 그리므로, 그리는 코드를 건드리는 대신
     //   최상위에 표시만 남겨 CSS 로 가립니다. (나중에 그려지는 항목까지 한 번에 적용됩니다)
@@ -123,6 +138,14 @@
       ddayEl.classList.add('dday-ongoing');
     }
     ddayEl.style.display = '';
+  }
+
+  /** '2026-09-01 14:03:22' / ISO 어느 쪽이 와도 "2026-09-01 14:03" 로 */
+  function formatCancelledAt(value) {
+    const d = new Date(String(value).replace(' ', 'T'));
+    if (Number.isNaN(d.getTime())) return '';
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
   function renderMarketStatusBadge(isExpired, isCancelled = false) {

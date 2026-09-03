@@ -16,23 +16,36 @@ async function confirmPayment(applicationId, paymentId) {
   });
 }
 
-// 결제 내역
-let paymentGroups = [];
-let expandedMarketIds  = new Set();
+// ── 정산 / 결제 내역 ────────────────────────────────────────────
+//   같은 화면이지만 보는 관점이 반대입니다.
+//     주최자 = 「정산 내역」 (받을 돈)
+//     판매자 = 「결제 내역」 (낸 돈)
+//   금액 합계는 서버가 계산합니다. 화면마다 따로 더하면 계산이 갈립니다.
 
-async function historys() {
+let paymentData = null;
+let expandedMarketIds = new Set();
+let settlementPeriod = 'all';
+
+const PERIOD_LABELS = [
+  { value: 'this_month', label: '이번 달' },
+  { value: '3months', label: '최근 3개월' },
+  { value: '6months', label: '최근 6개월' },
+  { value: 'all', label: '전체' },
+];
+
+async function historys(period) {
   return callApi('/payments/history', {
     method: 'POST',
-  })
+    body: { period: period || settlementPeriod },
+  });
 }
+
 async function changePagePayment() {
   const page = document.getElementById('profile-panel');
   const ui = document.getElementById('payment-list');
   const editUi = document.getElementById('edit-panel');
-  if (!page)
-    return;
-  if (!ui)
-    return;
+  if (!page) return;
+  if (!ui) return;
   // [UI 통일] mypage.html 에서만 정의된 헬퍼라서, 이 스크립트를 쓰는 다른 화면
   // (payment.html 등)에서는 존재하지 않을 수 있어 안전하게 확인 후 호출합니다.
   if (typeof setActiveMypageTab === 'function') setActiveMypageTab('payment');
@@ -41,96 +54,182 @@ async function changePagePayment() {
   if (editUi) editUi.hidden = true;
   payment_history();
 }
+
 async function payment_history() {
   const ui = document.getElementById('payment-list');
   if (!ui) return;
   try {
     const data = await historys();
     if (data && data.success) {
-      paymentGroups = groupByMarket(data.data);
+      paymentData = data.data;
       renderPaymentGroups();
     } else {
-      document.getElementById('payment-list').innerHTML = '<p class="list-empty">내역을 불러오지 못했습니다.</p>';
+      ui.innerHTML = '<p class="list-empty">내역을 불러오지 못했습니다.</p>';
     }
   } catch (error) {
+    // [수정] 예전에는 renderAlert("오류") 로 빨간 경고만 띄워 원인을 알 수 없었습니다.
     console.error('payment_history 오류:', error);
-    renderAlert("오류");
+    ui.innerHTML = '<p class="list-empty">서버에 연결할 수 없어요.</p>';
   }
 }
-function groupByMarket(items) {
-  const groups = new Map();
 
-  items.forEach((item) => {
-    const key = item.marketId;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        marketId: item.marketId,
-        marketTitle: item.marketTitle,
-        status: item.status,
-        totalAmount: 0,
-        items: [],
-      });
-    }
-    const group = groups.get(key);
-    if (item.status === 'Paid')
-      group.totalAmount += Number(item.amount) || 0;
-    else if (item.status === 'Refunded')
-      group.totalAmount += Number(item.amount - item.refundAmount) || 0;
-    group.items.push(item);
-  });
-  return Array.from(groups.values());
+function won(n) {
+  return (Number(n) || 0).toLocaleString('ko-KR') + '원';
 }
+
+function escapeSettle(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** 기간 선택 버튼 */
+function renderPeriodTabs() {
+  return `<div class="settle-periods">${PERIOD_LABELS.map((p) => `
+    <button type="button" class="settle-period${p.value === settlementPeriod ? ' on' : ''}"
+            data-period="${p.value}">${p.label}</button>`).join('')}</div>`;
+}
+
+/**
+ * 상단 요약.
+ *   주최자에게는 확정/대기를 나눠 보여줍니다.
+ *   마켓이 끝나야 금액이 굳는데, 진행 중인 마켓 금액을 같이 더해 두면
+ *   나중에 환불이 나올 때 숫자가 바뀌어 "왜 줄었지?" 가 됩니다.
+ */
+function renderSummary(d) {
+  const s = d.summary;
+  const isHost = d.role === 'host';
+
+  const cards = isHost
+    ? [
+        { label: '총 매출', value: won(s.grossAmount), cls: '' },
+        { label: '환불', value: '-' + won(s.refundAmount), cls: 'minus' },
+        { label: '정산 예정', value: won(s.netAmount), cls: 'main' },
+      ]
+    : [
+        { label: '총 결제', value: won(s.grossAmount), cls: '' },
+        { label: '환불받음', value: won(s.refundAmount), cls: 'minus' },
+        { label: '실제 지출', value: won(s.netAmount), cls: 'main' },
+      ];
+
+  return `
+    <div class="settle-summary">
+      ${cards.map((c) => `
+        <div class="settle-card ${c.cls}">
+          <span class="settle-card-label">${c.label}</span>
+          <b class="settle-card-value">${c.value}</b>
+        </div>`).join('')}
+    </div>
+    ${isHost ? `
+    <div class="settle-split">
+      <span>확정 <b>${won(s.settledAmount)}</b></span>
+      <span class="settle-pending">진행 중 <b>${won(s.pendingAmount)}</b></span>
+      <span class="settle-note">마켓이 끝나야 금액이 확정돼요</span>
+    </div>` : ''}
+    <p class="settle-count">마켓 ${s.marketCount}곳 · 부스 ${s.boothCount}칸</p>
+  `;
+}
+
+const SETTLE_BADGE = {
+  settled: { label: '정산 확정', cls: 'ok' },
+  pending: { label: '진행 중', cls: 'wait' },
+  cancelled: { label: '마켓 취소', cls: 'bad' },
+};
 
 function renderPaymentGroups() {
   const ui = document.getElementById('payment-list');
   if (!ui) return;
-  if (paymentGroups.length === 0) {
-    ui.innerHTML = '<p class="list-empty">결제/환불 내역이 없습니다.</p>';
+
+  const d = paymentData;
+  if (!d) { ui.innerHTML = ''; return; }
+
+  const isHost = d.role === 'host';
+
+  // 마이페이지 탭 이름도 역할에 맞춥니다.
+  //   주최자에게 「결제내역 확인」은 자기가 결제한 것처럼 읽힙니다.
+  //   실제로는 받을 돈이라 「정산 내역」이 맞습니다.
+  const tabLabel = document.getElementById('payment-tab-label');
+  if (tabLabel) tabLabel.textContent = isHost ? '정산 내역' : '결제 내역';
+
+  const head = `<h2 class="settle-title">${isHost ? '정산 내역' : '결제 내역'}</h2>` + renderPeriodTabs();
+
+  if (!d.groups || d.groups.length === 0) {
+    ui.innerHTML = head + `<p class="list-empty">${isHost
+      ? '이 기간에 정산할 내역이 없어요.' : '이 기간에 결제 내역이 없어요.'}</p>`;
+    bindPeriodTabs(ui);
     return;
   }
 
-  ui.innerHTML = paymentGroups.map((group) => {
+  ui.innerHTML = head + renderSummary(d) + d.groups.map((group) => {
     const isExpanded = expandedMarketIds.has(String(group.marketId));
+    const badge = SETTLE_BADGE[group.settlementStatus] || SETTLE_BADGE.pending;
+    const period = group.eventDateMin === group.eventDateMax
+      ? group.eventDateMin : `${group.eventDateMin} ~ ${group.eventDateMax}`;
+
     return `
-    <div class="item-card">
+    <div class="item-card settle-row">
       <div class="item-card-top">
-        <span class="item-card-title">${group.marketTitle}</span>
-        <span class="item-card-meta">총 ${group.totalAmount.toLocaleString()}원</span>
+        <span class="item-card-title">${escapeSettle(group.marketTitle)}</span>
+        <span class="settle-badge ${badge.cls}">${badge.label}</span>
       </div>
+      <p class="settle-meta">${period} · 부스 ${group.boothCount}칸${
+        isHost ? '' : ` · 주최 ${escapeSettle(group.hostNickname)}`}</p>
+
+      <!-- 마켓 단위 금액은 접힌 상태에서도 보여야 합니다.
+           예전에는 「자세히 보기」를 눌러야만 숫자가 나왔습니다. -->
+      <div class="settle-amounts">
+        <span>매출 <b>${won(group.grossAmount)}</b></span>
+        ${group.refundAmount > 0 ? `<span class="minus">환불 <b>-${won(group.refundAmount)}</b></span>` : ''}
+        <span class="settle-net">${isHost ? '정산' : '지출'} <b>${won(group.netAmount)}</b></span>
+      </div>
+
       <button type="button" class="btn btn-outline btn-sm" data-action="toggle-detail" data-market-id="${group.marketId}">
-        ${isExpanded ? '접기' : '자세히 보기'}
+        ${isExpanded ? '접기' : '부스별 보기'}
       </button>
       <div id="detail-${group.marketId}" class="detail-wrap ${isExpanded ? 'open' : ''}">
-        ${isExpanded ? renderGroupDetail(group) : ''}
+        ${isExpanded ? renderGroupDetail(group, isHost) : ''}
       </div>
-    </div>
-  `;
+    </div>`;
   }).join('');
+
+  bindPeriodTabs(ui);
   ui.querySelectorAll('[data-action="toggle-detail"]').forEach((btn) => {
     btn.addEventListener('click', () => handleToggleDetail(btn.dataset.marketId));
   });
 }
-function renderGroupDetail(group) {
+
+function bindPeriodTabs(ui) {
+  ui.querySelectorAll('[data-period]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      settlementPeriod = btn.dataset.period;
+      // 기간을 바꾸면 펼쳐둔 마켓이 목록에서 사라질 수 있어 초기화합니다.
+      expandedMarketIds.clear();
+      payment_history();
+    });
+  });
+}
+
+function renderGroupDetail(group, isHost) {
   return `
     <div class="item-card-detail">
       <table class="detail-table">
         <thead>
           <tr>
-            <th>판매자</th>
-            <th>원금</th>
-            <th>환불 금액</th>
-            <th>결제 금액</th>
+            <th>${isHost ? '판매자' : '부스'}</th>
+            <th class="num">결제</th>
+            <th class="num">환불</th>
+            <th class="num">${isHost ? '정산' : '지출'}</th>
           </tr>
         </thead>
         <tbody>
           ${group.items.map((item) => `
             <tr>
-              <td>${item.sellerNickname}</td>
-              <td>${Number(item.amount).toLocaleString()}원</td>
-              <td>${Number(item.refundAmount).toLocaleString()}원</td>
-              <td>${Number(item.amount - item.refundAmount).toLocaleString()}원</td>
-            </tr>
-          `).join('')}
+              <td>${escapeSettle(isHost ? item.sellerNickname : (item.boothNumber || item.itemName))}</td>
+              <td class="num">${won(item.amount)}</td>
+              <td class="num${item.refundAmount > 0 ? ' minus' : ''}">${
+                item.refundAmount > 0 ? '-' + won(item.refundAmount) : '-'}</td>
+              <td class="num"><b>${won(item.netAmount)}</b></td>
+            </tr>`).join('')}
         </tbody>
       </table>
     </div>`;

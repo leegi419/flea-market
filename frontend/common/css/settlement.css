@@ -1,0 +1,63 @@
+/* frontend/common/css/settlement.css — 정산 / 결제 내역 화면 */
+
+.settle-title { font-size: 1.1rem; margin: 0 0 10px; }
+
+/* 기간 선택 */
+.settle-periods { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.settle-period {
+  border: 2px solid #2A1C12; background: #fff; border-radius: 999px;
+  padding: 5px 14px; font-size: .86rem; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.settle-period.on { background: #E0912F; }
+
+/* 상단 요약 */
+.settle-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.settle-card {
+  flex: 1 1 130px; background: #fff; border: 1px solid #d9cdb8;
+  border-radius: 12px; padding: 12px; text-align: center;
+}
+.settle-card.main { background: #FBF6EC; border: 2px solid #2A1C12; }
+.settle-card-label { display: block; font-size: .8rem; color: #6b5a4a; margin-bottom: 4px; }
+.settle-card-value { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.settle-card.minus .settle-card-value { color: #c0392b; }
+.settle-card.main .settle-card-value { color: #1d5f34; }
+
+.settle-split {
+  display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+  background: #f1ece2; border-radius: 10px; padding: 9px 12px;
+  font-size: .88rem; margin-bottom: 6px;
+}
+.settle-split b { font-variant-numeric: tabular-nums; }
+.settle-pending b { color: #8a5407; }
+.settle-note { color: #6b5a4a; font-size: .8rem; margin-left: auto; }
+.settle-count { color: #6b5a4a; font-size: .85rem; margin: 0 0 14px; }
+
+/* 마켓 행 */
+.settle-row .item-card-top { align-items: center; gap: 8px; }
+.settle-meta { color: #6b5a4a; font-size: .84rem; margin: 4px 0 8px; }
+
+.settle-badge {
+  font-size: .74rem; font-weight: 700; border-radius: 999px; padding: 3px 10px; white-space: nowrap;
+}
+.settle-badge.ok   { background: #2f8f4e; color: #fff; }
+.settle-badge.wait { background: #E0912F; color: #2A1C12; }
+.settle-badge.bad  { background: #c0392b; color: #fff; }
+
+.settle-amounts {
+  display: flex; gap: 14px; flex-wrap: wrap; align-items: baseline;
+  padding: 9px 11px; background: #fff; border: 1px solid #d9cdb8;
+  border-radius: 9px; margin-bottom: 10px; font-size: .88rem;
+}
+.settle-amounts b { font-variant-numeric: tabular-nums; }
+.settle-amounts .minus b { color: #c0392b; }
+.settle-net { margin-left: auto; font-size: .95rem; }
+.settle-net b { color: #1d5f34; font-size: 1.05rem; }
+
+/* 부스별 표 */
+.detail-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.detail-table .num.minus { color: #c0392b; }
+
+@media (max-width: 520px) {
+  .settle-net { margin-left: 0; width: 100%; }
+  .settle-note { margin-left: 0; width: 100%; }
+}

@@ -45,6 +45,7 @@
     'mymarketpage.html',     // 내 마켓 관리
     'market-create.html',    // 마켓 등록
     'correctionmarket.html', // 마켓 수정
+    'checkin-scan.html',     // [현장 QR 체크인] 주최자 스캐너 (판매자용 checkin-pass.html 은 제외)
   ];
 
   var LOGIN_PAGE = '/pages/A_auth-main/login.html';

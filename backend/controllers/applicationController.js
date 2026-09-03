@@ -152,6 +152,8 @@ export async function getMyApplications(req, res) {
          --   예전에는 마켓이 취소돼도 신청이 「대기중」으로 그대로 보여서,
          --   판매자는 아직 심사 중인 줄 알고 기다리게 됐습니다.
          m.isExpired AS marketIsExpired,
+         -- [취소 사유] 판매자가 "왜 취소됐는지" 를 자기 화면에서 바로 볼 수 있어야 합니다.
+         m.cancelReason AS marketCancelReason, m.cancelledAt AS marketCancelledAt,
          m.hostId, hu.nickname AS hostNickname,
          m.maxparticipants,
          (SELECT COUNT(*) FROM applications a2

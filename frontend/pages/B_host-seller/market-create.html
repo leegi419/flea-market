@@ -16,7 +16,7 @@
   <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=19f0092b5cdea100b70fdb607cc3ddd0&libraries=services"></script>
   <script type="module" src="js/marketmap.js?v=2"></script>
   <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
-  <script src="js/market.js?v=9"></script>
+  <script src="js/market.js?v=10"></script>
   <script src="../../common/js/api.js?v=4"></script>
   <script type="module" src="js/marketdate.js?v=2"></script>
   <!-- <script type="module" src="js/map-integration.js?v=2"></script> -->
@@ -77,6 +77,13 @@
           <input type="number" id="max-participants" class="form-input" placeholder="0" min="0" max="10000" required />
           <p class="form-hint">부스 수량에 제한이 없다면 0을 입력해주세요.</p>
           <p class="form-hint">최대 부스 수는 10,000개까지 가능합니다.</p>
+        </div>
+        <div class="form-field">
+          <label for="allow-overcapacity" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="allow-overcapacity" style="width:auto;" />
+            정원이 차도 초과 신청 허용하기
+          </label>
+          <p class="form-hint">켜두면 최대 부스 수를 넘겨도 행사 시작 전까지는 신청을 받을 수 있어요. 꺼두면 정원이 차는 순간 신청이 막혀요.</p>
         </div>
         <div class="form-field">
           <label for="allow-duplicate-application" style="display:flex; align-items:center; gap:8px; cursor:pointer;">

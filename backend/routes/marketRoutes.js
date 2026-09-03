@@ -13,7 +13,7 @@ import {
 import { authenticateToken, optionalAuth } from '../middleware/authMiddleware.js';
 import { requireHost } from '../middleware/hostOnlyMiddleware.js';
 import { validateMarketInput } from '../middleware/marketValidationMiddleware.js';
-import { deleteMarket } from '../controllers/dbdeleteController.js';
+import { deleteMarket, getCancelPreview, getCancelReasons } from '../controllers/dbdeleteController.js';
 
 const router = express.Router();
 
@@ -245,10 +245,26 @@ router.post(
  */
 // [수정] optionalAuth 부착 — 취소된 마켓을 주최자 본인에게만 보여주기 위해서입니다.
 //   토큰이 없거나 틀려도 401 을 내지 않으므로 비로그인 조회는 그대로 동작합니다.
+/**
+ * @swagger
+ * /markets/cancel-reasons:
+ *   get:
+ *     summary: 마켓 취소 사유 목록
+ *     description: 취소 확인 창의 드롭다운을 그릴 때 씁니다. code 와 label 쌍.
+ *     tags: [Markets]
+ *     responses:
+ *       200: { description: 조회 성공 }
+ */
+// 주의: '/:marketId' 보다 먼저 등록해야 합니다.
+//   아래에 두면 'cancel-reasons' 를 marketId 로 해석해 404 가 납니다.
+router.get('/cancel-reasons', getCancelReasons);
+
 router.get('/:marketId', optionalAuth, getMarketDetail);
 //router.get('/closed/:marketId', authenticateToken,marketClosed);
 router.patch('/:marketId', authenticateToken, updateMarketStatus);
-router.patch('/closed/:marketId', authenticateToken, deleteMarket);
+// [중복 제거] 아래쪽에 Swagger 문서와 함께 같은 라우트가 한 번 더 있었습니다.
+//   지금은 핸들러가 같아 증상이 없지만, 한쪽만 고치면 먼저 등록된 것만 동작해
+//   "고쳤는데 안 바뀐다"로 헤매게 됩니다. 문서가 붙은 아래쪽 하나만 남깁니다.
 /**
  * @swagger
  * /markets/{marketId}/cancel-preview:
@@ -270,7 +286,7 @@ router.patch('/closed/:marketId', authenticateToken, deleteMarket);
  *       403: { description: 본인 마켓이 아님 }
  *       404: { description: 존재하지 않는 마켓 }
  */
-//router.get('/:marketId/cancel-preview', authenticateToken, getCancelPreview);
+router.get('/:marketId/cancel-preview', authenticateToken, getCancelPreview);
 
 /**
  * @swagger

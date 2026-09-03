@@ -42,9 +42,14 @@ async function getMarketColumns(db) {
       `SELECT COLUMN_NAME AS c FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = 'markets'`
     );
-    marketColumnCache = new Set(rows.map((r) => r.c));
+    // 소문자 키 -> 실제 표기 로 담습니다.
+    //   information_schema 는 DB 에 적힌 그대로(`maxParticipants`) 돌려주는데,
+    //   아래 검사 목록은 소문자('maxparticipants')로 쓰고 있어서 Set.has() 가 계속 false 였습니다.
+    //   그 결과 정원 컬럼이 SELECT 에서 빠지고 -> undefined -> NaN -> Number.isFinite 실패로
+    //   **정원 검사 블록이 통째로 건너뛰어졌습니다.** 에러 없이 조용히 꺼져서 알아채기 어려웠습니다.
+    marketColumnCache = new Map(rows.map((r) => [String(r.c).toLowerCase(), r.c]));
   } catch (error) {
-    marketColumnCache = new Set();
+    marketColumnCache = new Map();
   }
   return marketColumnCache;
 }
@@ -92,11 +97,17 @@ export async function checkBoothApplyEligibility(db, {
   lock = false,
 } = {}) {
   const columns = await getMarketColumns(db);
-  const has = (c) => columns.size === 0 || columns.has(c);
+  const has = (c) => columns.size === 0 || columns.has(String(c).toLowerCase());
+  /** DB 의 실제 표기를 돌려줍니다. (컬럼 목록을 못 읽었으면 준 이름 그대로) */
+  const actual = (c) => columns.get(String(c).toLowerCase()) || c;
 
   const selectCols = ['marketId', 'hostId', 'isExpired', 'title'];
   for (const c of ['maxparticipants', 'allowOvercapacity', 'allowDuplicateApplication', 'eventDate_min', 'eventDate_max', 'recruitmentDate_min', 'recruitmentDate_max']) {
-    if (has(c)) selectCols.push(c);
+    if (!has(c)) continue;
+    // SELECT 는 DB 의 실제 표기로 하되, 코드가 읽을 때는 한 가지 표기만 쓰도록 별칭을 붙입니다.
+    // 이렇게 해두면 팀마다 컬럼 표기가 달라도 아래 로직은 손댈 필요가 없습니다.
+    const real = actual(c);
+    selectCols.push(real === c ? c : `\`${real}\` AS ${c}`);
   }
 
   const [marketRows] = await db.query(

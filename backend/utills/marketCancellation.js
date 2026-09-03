@@ -187,54 +187,16 @@ export async function buildCancelPreview(db, marketId) {
 /* 환불 실행                                                            */
 /* ------------------------------------------------------------------ */
 
-/**
- * 미리보기에서 계산한 대상들에게 실제로 전액 환불을 실행하고, 신청 상태를 정리합니다.
- *
- * 실패해도 예외를 던지지 않습니다. 건별로 성공/실패를 모아 돌려주고,
- * 호출한 쪽이 마켓 취소를 계속 진행할 수 있게 합니다.
- *
- * @returns {Promise<{ refunded:Array, failed:Array, cancelledUnpaid:number }>}
- */
-export async function refundAllForMarket(db, { marketId, preview, reason }) {
-  const refunded = [];
-  const failed = [];
-
-  const paidItems = preview.items.filter((i) => i.isPaid);
-
-  for (const item of paidItems) {
-    try {
-      // 마켓 취소는 주최자 사정이므로 정책상 무조건 전액 환불입니다.
-      //   (판매자가 부분 환불을 요청해 둔 RefundRequested 건도 전액으로 돌려줍니다)
-      const result = await refundOneApplication(db, {
-        applicationId: item.applicationId,
-        reason: reason || '주최자의 마켓 취소로 인한 전액 환불',
-        mode: REFUND_MODE.FULL,
-      });
-
-      if (!result.ok) {
-        // 이미 환불된 건(일괄 결제취소로 먼저 처리한 경우 등)은 실패가 아니라 건너뜀입니다.
-        if (result.code === 'ALREADY_REFUNDED') continue;
-        failed.push({ ...item, error: result.message });
-        continue;
-      }
-
-      refunded.push({ ...item, refundedAmount: result.refundedAmount });
-    } catch (error) {
-      console.error(`[marketCancellation] 환불 실패 (applicationId=${item.applicationId}):`, error.message);
-      failed.push({ ...item, error: error.message });
-    }
-  }
-
-  // 결제 전 신청은 돌려줄 돈이 없으므로 상태만 정리합니다.
-  //   'Cancelled' 는 applications.status 가 varchar 라 스키마 변경 없이 쓸 수 있습니다.
-  const [cancelResult] = await db.query(
-    `UPDATE applications SET status = 'Cancelled'
-      WHERE marketId = ? AND status IN ('Pending', 'Approved')`,
-    [marketId]
-  );
-
-  return { refunded, failed, cancelledUnpaid: cancelResult.affectedRows || 0 };
-}
+// [제거됨] refundAllForMarket
+//
+//   이 파일에 환불 실행 함수가 있었지만, 팀이 되돌리는 과정에서 이 함수가 의존하던
+//   utills/refundCore.js 가 삭제됐습니다. 그 결과 refundOneApplication 과 REFUND_MODE 가
+//   **정의되지 않은 채로 남아**, 누군가 이 함수를 부르면 그 자리에서
+//   ReferenceError 로 죽는 상태였습니다. 아무도 부르지 않아 드러나지 않았을 뿐입니다.
+//
+//   환불 실행은 controllers/dbdeleteController.js 의 deleteMarket 안에 있습니다.
+//   (paymentService.cancelPayment 를 직접 호출하는 방식)
+//   이 파일은 이제 "환불 예상 내역 계산" 만 담당합니다.
 
 /** 미리보기를 사람이 읽는 한 줄로 (알림·로그용) */
 export function summarizePreview(preview) {
@@ -251,6 +213,5 @@ export default {
   getCancellationSchema,
   resetCancellationCache,
   buildCancelPreview,
-  refundAllForMarket,
   summarizePreview,
 };

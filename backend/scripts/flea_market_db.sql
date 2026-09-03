@@ -1,19 +1,10 @@
--- =====================================================================
--- flea_market_db 전체 재생성 스크립트 (구조만, 데이터 없음)
---   기존 flea_market_db 를 통째로 삭제하고 최신 스키마로 다시 만듭니다.
---   ⚠️ 실행하면 flea_market_db 안의 모든 데이터가 사라집니다.
---   실행:  mysql -u root -p < rebuild_flea_market_db.sql
--- =====================================================================
-
-DROP DATABASE IF EXISTS `flea_market_db`;
-
 CREATE DATABASE  IF NOT EXISTS `flea_market_db` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 USE `flea_market_db`;
 -- MySQL dump 10.13  Distrib 8.0.45, for Win64 (x86_64)
 --
--- Host: 127.0.0.1    Database: flea_market_db2
+-- Host: 127.0.0.1    Database: flea_market_db
 -- ------------------------------------------------------
--- Server version	8.4.10
+-- Server version	8.0.45
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -51,7 +42,8 @@ CREATE TABLE `applications` (
   KEY `sellerId` (`sellerId`),
   KEY `idx_application_booth_type` (`boothTypeId`),
   CONSTRAINT `applications_ibfk_1` FOREIGN KEY (`marketId`) REFERENCES `markets` (`marketId`) ON DELETE CASCADE,
-  CONSTRAINT `applications_ibfk_2` FOREIGN KEY (`sellerId`) REFERENCES `users` (`userId`) ON DELETE CASCADE
+  CONSTRAINT `applications_ibfk_2` FOREIGN KEY (`sellerId`) REFERENCES `users` (`userId`) ON DELETE CASCADE,
+  CONSTRAINT `applications_ibfk_3` FOREIGN KEY (`boothTypeId`) REFERENCES `market_booth_types` (`boothTypeId`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=26 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
@@ -104,6 +96,77 @@ CREATE TABLE `comments` (
   CONSTRAINT `comments_ibfk_1` FOREIGN KEY (`userId`) REFERENCES `users` (`userId`) ON DELETE CASCADE,
   CONSTRAINT `comments_ibfk_2` FOREIGN KEY (`parentId`) REFERENCES `comments` (`commentId`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `market_booth_types`
+--
+
+DROP TABLE IF EXISTS `market_booth_types`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `market_booth_types` (
+  `boothTypeId` int NOT NULL AUTO_INCREMENT,
+  `marketId` int NOT NULL,
+  `name` varchar(50) NOT NULL COMMENT '부스 종류 이름 (예: A타입, B타입)',
+  `price` int NOT NULL DEFAULT '0' COMMENT '이 종류의 부스 가격',
+  `capacity` int NOT NULL DEFAULT '0' COMMENT '종류별 정원, 0이면 제한 없음',
+  `sortOrder` int NOT NULL DEFAULT '0' COMMENT '주최자가 정한 노출 순서',
+  `isActive` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0이면 신청 화면에서 숨김',
+  PRIMARY KEY (`boothTypeId`),
+  KEY `idx_booth_types_market` (`marketId`),
+  CONSTRAINT `market_booth_types_ibfk_1` FOREIGN KEY (`marketId`) REFERENCES `markets` (`marketId`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `market_checkin_sessions`
+--
+
+DROP TABLE IF EXISTS `market_checkin_sessions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `market_checkin_sessions` (
+  `sessionId` int NOT NULL AUTO_INCREMENT,
+  `marketId` int NOT NULL,
+  `eventDate` date NOT NULL COMMENT '이 세션이 담당하는 개최일 하루',
+  `status` varchar(20) NOT NULL DEFAULT 'open' COMMENT 'scheduled(시간대에 맡김) | open(주최자가 직접 염) | closed(직접 닫음)',
+  `secret` char(64) NOT NULL COMMENT 'QR 서명 키. 다시 열 때마다 교체되어 캡처된 옛 QR 을 무효화. 외부 노출 금지',
+  `openedBy` bigint unsigned NOT NULL COMMENT '체크인을 시작한 주최자 userId',
+  `openedAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `closedAt` datetime DEFAULT NULL,
+  `opensAt` datetime DEFAULT NULL COMMENT '이 날 체크인 시작 시각. QR 은 이보다 leadMinutes 만큼 먼저 나옵니다',
+  `closesAt` datetime DEFAULT NULL COMMENT '이 날 체크인 종료 시각. 지나면 QR 이 자동으로 멈춥니다',
+  `leadMinutes` int NOT NULL DEFAULT '60' COMMENT 'opensAt 기준 몇 분 전부터 QR 을 띄울지 (기본 60분)',
+  PRIMARY KEY (`sessionId`),
+  UNIQUE KEY `uk_checkin_session_day` (`marketId`,`eventDate`),
+  CONSTRAINT `fk_checkin_session_market` FOREIGN KEY (`marketId`) REFERENCES `markets` (`marketId`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `market_checkins`
+--
+
+DROP TABLE IF EXISTS `market_checkins`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `market_checkins` (
+  `checkinId` int NOT NULL AUTO_INCREMENT,
+  `sessionId` int NOT NULL,
+  `marketId` int NOT NULL,
+  `applicationId` int NOT NULL,
+  `sellerId` bigint unsigned NOT NULL,
+  `method` varchar(10) NOT NULL DEFAULT 'qr' COMMENT 'qr(스캔) | code(6자리 숫자) | manual(명단에서 직접)',
+  `checkedBy` bigint unsigned DEFAULT NULL COMMENT '처리한 주최자 userId',
+  `checkedInAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`checkinId`),
+  UNIQUE KEY `uk_checkin_once` (`sessionId`,`applicationId`) COMMENT '같은 날 같은 부스를 두 번 찍어도 1건만 남습니다',
+  KEY `idx_checkin_market_seller` (`marketId`,`sellerId`),
+  KEY `fk_checkin_application` (`applicationId`),
+  CONSTRAINT `fk_checkin_application` FOREIGN KEY (`applicationId`) REFERENCES `applications` (`applicationId`) ON DELETE CASCADE,
+  CONSTRAINT `fk_checkin_session` FOREIGN KEY (`sessionId`) REFERENCES `market_checkin_sessions` (`sessionId`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -160,10 +223,70 @@ CREATE TABLE `markets` (
   `recruitmentDate_max` date DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `boothPrice_origin` int DEFAULT NULL,
+  `cancelReasonCode` varchar(30) DEFAULT NULL COMMENT '취소 사유 코드 (weather/venue/low_signup/host_issue/safety/other)',
+  `cancelReason` varchar(300) DEFAULT NULL COMMENT '취소 사유 문구. 목록에서 고른 문구 또는 기타 직접 입력',
+  `cancelledAt` datetime DEFAULT NULL COMMENT '취소한 시각. 사유와 함께 기록으로 남습니다',
   PRIMARY KEY (`marketId`),
   KEY `hostId` (`hostId`),
   CONSTRAINT `markets_ibfk_1` FOREIGN KEY (`hostId`) REFERENCES `users` (`userId`) ON DELETE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=21 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=23 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `notification_regions`
+--
+
+DROP TABLE IF EXISTS `notification_regions`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `notification_regions` (
+  `regionId` int NOT NULL AUTO_INCREMENT,
+  `userId` bigint unsigned NOT NULL,
+  `region` varchar(50) NOT NULL COMMENT '알림 받을 지역명. 행이 없으면 모든 지역',
+  PRIMARY KEY (`regionId`),
+  UNIQUE KEY `uk_user_region` (`userId`,`region`),
+  CONSTRAINT `fk_notif_region_user` FOREIGN KEY (`userId`) REFERENCES `users` (`userId`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `notification_sent_log`
+--
+
+DROP TABLE IF EXISTS `notification_sent_log`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `notification_sent_log` (
+  `logId` int NOT NULL AUTO_INCREMENT,
+  `userId` bigint unsigned NOT NULL,
+  `kind` varchar(40) NOT NULL COMMENT '예약 알림 종류 (recruit_closing / payment_due)',
+  `targetType` varchar(20) NOT NULL COMMENT 'market | application',
+  `targetId` int NOT NULL,
+  `sentAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`logId`),
+  UNIQUE KEY `uk_sent_once` (`userId`,`kind`,`targetType`,`targetId`) COMMENT '같은 대상에 같은 알림은 한 번만',
+  KEY `idx_sent_at` (`sentAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `notification_settings`
+--
+
+DROP TABLE IF EXISTS `notification_settings`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `notification_settings` (
+  `settingId` int NOT NULL AUTO_INCREMENT,
+  `userId` bigint unsigned NOT NULL,
+  `category` varchar(40) NOT NULL COMMENT '알림 묶음 (application/payment/comment/market_change/new_market/deadline)',
+  `enabled` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0이면 이 묶음의 알림을 받지 않음',
+  `leadHours` int NOT NULL DEFAULT '1' COMMENT '마감 몇 시간 전에 알릴지 (1~24). deadline 묶음에서만 사용',
+  `notifyHour` int NOT NULL DEFAULT '10' COMMENT '이 시각(0~23)에 통지. attendance 묶음에서만 사용',
+  PRIMARY KEY (`settingId`),
+  UNIQUE KEY `uk_user_category` (`userId`,`category`),
+  CONSTRAINT `fk_notif_setting_user` FOREIGN KEY (`userId`) REFERENCES `users` (`userId`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -271,7 +394,7 @@ CREATE TABLE `users` (
   UNIQUE KEY `nickname` (`nickname`),
   UNIQUE KEY `nickname_2` (`nickname`),
   UNIQUE KEY `nickname_3` (`nickname`)
-) ENGINE=InnoDB AUTO_INCREMENT=7 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -283,41 +406,4 @@ CREATE TABLE `users` (
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-08-28  8:42:18
-
-
--- =====================================================================
--- [보강] market_booth_types — 원본 덤프에 빠져 있던 테이블
---   backend/utills/boothTypes.js, marketCancellation.js 가 사용합니다.
---   없으면 부스 종류(A/B/C) 기능이 통째로 비활성화됩니다.
--- =====================================================================
-USE `flea_market_db`;
-
-DROP TABLE IF EXISTS `market_booth_types`;
-CREATE TABLE `market_booth_types` (
-  `boothTypeId` int NOT NULL AUTO_INCREMENT,
-  `marketId` int NOT NULL,
-  `name` varchar(50) NOT NULL COMMENT '부스 종류 이름 (예: A타입, B타입)',
-  `price` int NOT NULL DEFAULT '0' COMMENT '이 종류의 부스 가격',
-  `capacity` int NOT NULL DEFAULT '0' COMMENT '종류별 정원, 0이면 제한 없음',
-  `sortOrder` int NOT NULL DEFAULT '0' COMMENT '주최자가 정한 노출 순서',
-  `isActive` tinyint(1) NOT NULL DEFAULT '1' COMMENT '0이면 신청 화면에서 숨김',
-  PRIMARY KEY (`boothTypeId`),
-  KEY `idx_booth_types_market` (`marketId`),
-  CONSTRAINT `market_booth_types_ibfk_1`
-    FOREIGN KEY (`marketId`) REFERENCES `markets` (`marketId`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- applications.boothTypeId 가 실제 부스 종류를 가리키도록 FK 연결
-ALTER TABLE `applications`
-  ADD CONSTRAINT `applications_ibfk_3`
-  FOREIGN KEY (`boothTypeId`) REFERENCES `market_booth_types` (`boothTypeId`)
-  ON DELETE SET NULL;
-
--- =====================================================================
--- 결과 확인
--- =====================================================================
-SELECT TABLE_NAME AS '생성된 테이블'
-  FROM information_schema.TABLES
- WHERE TABLE_SCHEMA = 'flea_market_db'
- ORDER BY TABLE_NAME;
+-- Dump completed on 2026-09-03 10:25:02

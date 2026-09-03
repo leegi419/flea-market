@@ -11,6 +11,8 @@
         href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap"
         rel="stylesheet" />
     <link rel="stylesheet" href="../../common/css/style.css" />
+    <!-- [정산/결제 내역] -->
+    <link rel="stylesheet" href="../../common/css/settlement.css?v=1" />
     <!-- 페이지 폭이 넓은 .page-wrap/.nav/.panel 레이아웃은 B_host-seller 쪽에 이미 있어 그대로 가져다 씁니다. -->
     <link rel="stylesheet" href="../B_host-seller/css/host-seller.css?v=2" />
     <link rel="stylesheet" href="css/auth.css?v=3" />
@@ -41,7 +43,11 @@
                     <button type="button" class="mypage-tab-btn active" data-tab="profile" onclick="changePageProfile()">내 프로필</button>
                     <!-- [UI 통일] profile-edit.html로 이동하던 링크를 같은 화면 안에서 edit-panel을 보여주는 버튼으로 바꿨습니다. -->
                     <button type="button" class="mypage-tab-btn" data-tab="edit" onclick="changePageEdit()">내 정보수정</button>
-                    <button type="button" class="mypage-tab-btn" data-tab="payment" onclick="changePagePayment()">결제내역 확인</button>
+                    <button type="button" class="mypage-tab-btn" data-tab="payment" onclick="changePagePayment()"><span id="payment-tab-label">결제내역 확인</span></button>
+                    <!-- [알림 설정] 별도 화면으로 이동합니다.
+                         mypage.js 의 탭 전환 로직을 건드리지 않으려고 버튼이 아닌 링크로 뒀습니다. -->
+                    <a class="mypage-tab-btn" href="notification-settings.html"
+                       style="display:block; text-align:left; text-decoration:none;">알림 설정</a>
                 </div>
 
                 <div class="edit-panels" id="profile-panel">
@@ -278,7 +284,9 @@
     <script src="../../common/js/api.js?v=4"></script>
     <script src="../../common/js/validators.js?v=2"></script>
     <script src="js/mypage.js?v=7"></script>
-    <script src="../B_host-seller/js/payment.js"></script>
+    <!-- [현장 QR 체크인] 프로필에 노쇼 지표 추가 (기존 스크립트는 건드리지 않습니다) -->
+    <script src="../../common/js/no-show-badge.js?v=4"></script>
+    <script src="../B_host-seller/js/payment.js?v=9"></script>
     <!-- [UI 통일] 내 정보 수정(profile-edit.html) 로직을 같은 화면에 내장했습니다. -->
     <script src="js/profile-edit.js?v=5"></script>
 </body>

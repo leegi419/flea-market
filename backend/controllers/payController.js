@@ -185,7 +185,6 @@ export async function refundPayment(req, res) {
     }
 
     if (payment.status == 'Paid') {
-      console.log('여기 실행됨: Paid 분기, reason =', reason);
       const cancelResult = await cancelPayment(
         payment.paymentKey,
         reason || '주최자 요청에 의한 환불'
@@ -193,7 +192,6 @@ export async function refundPayment(req, res) {
     }
 
     if (payment.status == 'RefundRequested') {
-      console.log('여기 실행됨: RefundRequested 분기, refundAmount =', payment.refundAmount);
       // 📌 미리 계산해둔 refundAmount로 부분 환불 실행
       await cancelPayment(payment.paymentKey, '환불 승인 처리', payment.refundAmount);
     }
@@ -301,79 +299,149 @@ export async function requestRefund(req, res) {
     return res.status(500).json({ success: false, message: '서버 오류가 발생했습니다.' });
   }
 }
+/**
+ * GET /api/pay/history?period=this_month|3months|all
+ *
+ * 주최자에게는 「정산 내역」, 판매자에게는 「결제 내역」 입니다.
+ * 같은 API 지만 보는 관점이 반대라 role 로 나눠 응답합니다.
+ *
+ * ── 정산이라고 부르는 근거 ────────────────────────────────────────
+ *   주최자 기준 (원금 - 환불) 이 곧 받을 금액입니다. 계산은 이미 되어 있었고,
+ *   화면이 그걸 "결제내역" 이라 부르며 마켓별 합계도 보여주지 않았을 뿐입니다.
+ *
+ * ── 실제 이체는 없습니다 ──────────────────────────────────────────
+ *   결제가 테스트 API 라 주최자 계좌로 돈이 나가지는 않습니다.
+ *   여기서 하는 일은 "얼마를 받게 되는가" 를 보여주는 조회까지입니다.
+ *
+ * ── 정산 확정 시점 ────────────────────────────────────────────────
+ *   마켓이 끝나야 금액이 굳습니다. 진행 중인 마켓은 아직 취소·환불이 나올 수 있어
+ *   'pending' 으로 따로 보여줍니다. 확정분과 섞으면 숫자가 나중에 바뀝니다.
+ */
 export async function paymentHistory(req, res) {
-  console.log("들어옴");
-  console.log(req.user.userId);
-  const hostId = req.user.userId;
-  console.log(hostId);
-  //const { applicationId } = req.body;
+  const userId = req.user.userId;
+  // 라우트가 POST 라 본문으로도, 쿼리스트링으로도 받을 수 있게 둡니다.
+  const period = String(req.query?.period || req.body?.period || 'all');
+
+  // 기간은 "마켓 개최일" 기준입니다. 결제일 기준으로 하면 몇 달 전에 미리 결제한 건이
+  // 엉뚱한 달에 잡혀, 주최자가 생각하는 행사 단위와 어긋납니다.
+  const PERIODS = {
+    this_month: 'AND m.eventDate_max >= DATE_FORMAT(CURDATE(), "%Y-%m-01")',
+    '3months': 'AND m.eventDate_max >= DATE_SUB(CURDATE(), INTERVAL 3 MONTH)',
+    '6months': 'AND m.eventDate_max >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)',
+    all: '',
+  };
+  const periodSql = PERIODS[period] ?? '';
 
   try {
-    const [dataA] = await pool.query(
-      `SELECT * FROM users WHERE userId =?`, [hostId]
-    );
-    if (dataA[0].userType === 1) {
-      console.log("주최자")
-      const [hostData] = await pool.query(
-        /*sql*/
-        `SELECT 
-        a.applicationId,
-        a.marketId,
-        a.sellerId,
-        a.itemName,
-        a.status,
-        m.title AS marketTitle,
-        u.nickname AS sellerNickname,
-        p.amount,
-        IFNULL(p.refundAmount,0) AS refundAmount
-        FROM applications a
-        INNER JOIN markets m ON a.marketId = m.marketId
-        INNER JOIN users u ON a.sellerId = u.userId
-        LEFT JOIN payments p ON a.applicationId = p.applicationId
-        WHERE m.hostId = ? AND a.status IN ('Paid', 'Refunded')`,
-        [hostId]
-      );
+    const [me] = await pool.query('SELECT userType FROM users WHERE userId = ?', [userId]);
+    if (me.length === 0) {
+      return res.status(404).json({ success: false, data: [], message: '사용자를 찾을 수 없습니다.' });
+    }
+    const isHost = Number(me[0].userType) === 1;
 
-      if (hostData.length === 0) {
-        return res.status(500).json({ success: false, message: '마켓을 찾을 수 없거나 결제된 내역이 없습니다.' });
+    // 주최자는 자기 마켓의 모든 결제, 판매자는 자기가 낸 결제.
+    const [rows] = await pool.query(
+      `SELECT
+         a.applicationId, a.marketId, a.sellerId, a.itemName, a.boothNumber, a.status,
+         m.title AS marketTitle,
+         m.isExpired,
+         DATE_FORMAT(m.eventDate_min, '%Y-%m-%d') AS eventDateMin,
+         DATE_FORMAT(m.eventDate_max, '%Y-%m-%d') AS eventDateMax,
+         (m.eventDate_max < CURDATE()) AS isFinished,
+         u.nickname AS sellerNickname,
+         hu.nickname AS hostNickname,
+         IFNULL(p.amount, 0) AS amount,
+         IFNULL(p.refundAmount, 0) AS refundAmount,
+         p.paidAt
+       FROM applications a
+       INNER JOIN markets m ON a.marketId = m.marketId
+       INNER JOIN users u ON a.sellerId = u.userId
+       INNER JOIN users hu ON m.hostId = hu.userId
+       LEFT JOIN payments p ON a.applicationId = p.applicationId
+      WHERE ${isHost ? 'm.hostId = ?' : 'a.sellerId = ?'}
+        AND a.status IN ('Paid', 'Refunded', 'RefundRequested')
+        ${periodSql}
+      ORDER BY m.eventDate_max DESC, a.applicationId ASC`,
+      [userId]
+    );
+
+    // 마켓별로 묶고 합계를 서버에서 냅니다.
+    //   화면마다 따로 더하면 계산이 갈립니다. 정산 금액은 한 곳에서만 계산해야 합니다.
+    const groupMap = new Map();
+    for (const r of rows) {
+      const key = String(r.marketId);
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          marketId: r.marketId,
+          marketTitle: r.marketTitle,
+          hostNickname: r.hostNickname,
+          eventDateMin: r.eventDateMin,
+          eventDateMax: r.eventDateMax,
+          isFinished: Number(r.isFinished) === 1,
+          isCancelled: Number(r.isExpired) === 2,
+          items: [],
+          boothCount: 0,
+          grossAmount: 0,
+          refundAmount: 0,
+          netAmount: 0,
+        });
       }
-      console.log(hostData);
-      return res.status(200).json({
-        success: true,
-        data: hostData,
-        message: "데이터 보내기 성공"
+      const g = groupMap.get(key);
+      const amount = Number(r.amount) || 0;
+      const refund = Number(r.refundAmount) || 0;
+      g.items.push({
+        applicationId: r.applicationId,
+        sellerId: r.sellerId,
+        sellerNickname: r.sellerNickname,
+        boothNumber: r.boothNumber,
+        itemName: r.itemName,
+        status: r.status,
+        amount,
+        refundAmount: refund,
+        netAmount: amount - refund,
+        paidAt: r.paidAt,
       });
+      g.boothCount += 1;
+      g.grossAmount += amount;
+      g.refundAmount += refund;
+      g.netAmount += amount - refund;
     }
-    else {
-      //판매자 쪽
-      console.log("판매자")
-      const [sellerData] = await pool.query(
-        /*sql*/
-        `SELECT
-        a.applicationId,
-        a.marketId,
-        a.sellerId,
-        a.status,
-        m.title AS marketTitle,
-        u.nickname AS sellerNickname,
-        p.amount,
-        IFNULL(p.refundAmount,0) AS refundAmount
-        FROM applications a
-        INNER JOIN markets m ON a.marketId = m.marketId
-        INNER JOIN users u ON a.sellerId = u.userId
-        LEFT JOIN payments p ON a.applicationId = p.applicationId
-        WHERE a.sellerId =? AND a.status IN ('Paid','Refunded','RefundRequested')
-        `,[hostId]
-      );
-      return res.status(200).json({
-        success: true,
-        data: sellerData,
-        message: "데이터 보내기 성공"
-      });
-    }
-  }
-  catch (error) {
-    console.log("에러")
-    console.error('결제 내역 오류:', error.message);
+
+    const groups = [...groupMap.values()].map((g) => ({
+      ...g,
+      // 마켓이 끝나야 금액이 굳습니다. 취소된 마켓은 전액 환불이라 확정으로 봅니다.
+      settlementStatus: g.isCancelled ? 'cancelled' : (g.isFinished ? 'settled' : 'pending'),
+    }));
+
+    const sum = (list, key) => list.reduce((acc, g) => acc + g[key], 0);
+    const settled = groups.filter((g) => g.settlementStatus === 'settled');
+    const pending = groups.filter((g) => g.settlementStatus === 'pending');
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        role: isHost ? 'host' : 'seller',
+        period,
+        groups,
+        summary: {
+          marketCount: groups.length,
+          boothCount: sum(groups, 'boothCount'),
+          grossAmount: sum(groups, 'grossAmount'),
+          refundAmount: sum(groups, 'refundAmount'),
+          netAmount: sum(groups, 'netAmount'),
+          // 확정 = 끝난 마켓, 대기 = 진행 중 (아직 환불이 나올 수 있음)
+          settledAmount: sum(settled, 'netAmount'),
+          pendingAmount: sum(pending, 'netAmount'),
+        },
+      },
+      // [버그 수정] 내역이 없을 때 500 을 반환하고 있었습니다.
+      //   신규 주최자는 화면이 그냥 깨졌습니다. 빈 목록은 오류가 아니라 정상 상태입니다.
+      message: groups.length === 0
+        ? (isHost ? '아직 정산할 내역이 없어요.' : '아직 결제 내역이 없어요.')
+        : '조회 성공',
+    });
+  } catch (error) {
+    console.error('결제/정산 내역 오류:', error.message);
+    return res.status(500).json({ success: false, data: null, message: '서버 오류로 내역을 불러오지 못했습니다.' });
   }
 }

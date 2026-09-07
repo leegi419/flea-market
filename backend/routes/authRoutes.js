@@ -57,6 +57,8 @@ import {
   ACCESS_TOKEN_TTL,
   REFRESH_TOKEN_TTL_DAYS,
 } from '../utills/tokenService.js';
+// [로그인 기기] User-Agent 해석 + IP 마스킹
+import { describeDevice, maskIp } from '../utills/deviceInfo.js';
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
@@ -709,10 +711,35 @@ router.post('/logout-all', authenticateToken, async (req, res) => {
 router.get('/sessions', authenticateToken, async (req, res) => {
   try {
     const sessions = await listActiveSessions(req.user.userId);
+
+    // [로그인 기기] User-Agent 를 사람이 읽는 형태로 바꾸고 IP 마지막 자리를 가립니다.
+    //   원문을 그대로 내리면 화면이 파싱해야 하고, IP 가 전부 보이면
+    //   어깨너머로 보이거나 캡처가 돌아다닐 때 그 자체가 위험합니다.
+    //   sessionId 도 내보내지 않습니다 — 조회 전용 화면이라 쓸 일이 없고,
+    //   노출되면 남의 세션을 지목하는 데 쓰일 수 있습니다.
+    const list = sessions.map((s) => {
+      const device = describeDevice(s.userAgent);
+      return {
+        // 원격 로그아웃 대상을 지목하려면 식별자가 필요합니다.
+        //   내 세션만 조회되므로 남의 세션을 건드릴 수는 없고,
+        //   폐기 API 도 본인 세션인지 다시 확인합니다.
+        sessionId: s.sessionId,
+        current: s.sessionId === req.user.sid,
+        deviceLabel: device.label,
+        deviceKind: device.kind,     // desktop / mobile / tablet — 화면 아이콘용
+        platform: device.platform,
+        browser: device.browser,
+        ipMasked: maskIp(s.ipAddress),
+        issuedAt: s.issuedAt,
+        lastUsedAt: s.lastUsedAt,
+        expiresAt: s.expiresAt,
+      };
+    });
+
     return res.status(200).json({
       success: true,
       data: {
-        sessions: sessions.map((s) => ({ ...s, current: s.sessionId === req.user.sid })),
+        sessions: list,
         accessTokenTtl: ACCESS_TOKEN_TTL,
         refreshTokenTtlDays: REFRESH_TOKEN_TTL_DAYS,
       },
@@ -721,6 +748,159 @@ router.get('/sessions', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('세션 목록 조회 오류:', error.message);
     return res.status(500).json({ success: false, data: null, message: '서버 오류로 세션 목록 조회에 실패했습니다.' });
+  }
+});
+
+/**
+ * @swagger
+ * /auth/sessions/others:
+ *   delete:
+ *     summary: 다른 기기 모두 로그아웃 (현재 기기는 유지)
+ *     description: |
+ *       현재 접속 중인 기기만 남기고 나머지 세션을 전부 폐기합니다.
+ *
+ *       **비밀번호를 다시 확인합니다.** 자리를 비운 사이 남이 이 버튼을 눌러
+ *       진짜 주인을 끊어버리는 일을 막기 위해서입니다.
+ *       기기를 하나씩 지목해 끊는 기능은 제공하지 않습니다 —
+ *       계정이 이미 도용됐다면 공격자가 그 기능으로 주인을 먼저 골라 끊을 수 있습니다.
+ *       "나만 남기고 전부" 는 그런 식으로 악용하기 어렵습니다.
+ *     tags: [Auth]
+ *     security: [{ bearerAuth: [] }]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword]
+ *             properties:
+ *               currentPassword: { type: string, description: '본인 확인용 현재 비밀번호' }
+ *     responses:
+ *       200: { description: 폐기됨 (revokedSessions 에 끊은 기기 수) }
+ *       400: { description: 비밀번호 누락 }
+ *       401: { description: 비밀번호 불일치 }
+ */
+router.delete('/sessions/others', authenticateToken, async (req, res) => {
+  const currentPassword = String(req.body?.currentPassword || '');
+
+  if (!currentPassword) {
+    return res.status(400).json({
+      success: false, data: null,
+      message: '본인 확인을 위해 현재 비밀번호를 입력해 주세요.',
+    });
+  }
+
+  try {
+    const [rows] = await pool.query('SELECT password FROM users WHERE userId = ?', [req.user.userId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, data: null, message: '사용자를 찾을 수 없습니다.' });
+    }
+
+    const match = await bcrypt.compare(currentPassword, rows[0].password);
+    if (!match) {
+      // 어느 쪽이 틀렸는지 자세히 알려주지 않습니다.
+      return res.status(401).json({
+        success: false, data: null, message: '비밀번호가 일치하지 않습니다.',
+      });
+    }
+
+    // 현재 세션(sid)만 남기고 전부 폐기합니다.
+    //   sid 가 없으면(구버전 토큰) 전부 끊깁니다. 이때는 본인도 다시 로그인해야 하지만,
+    //   남겨둘 세션을 특정할 수 없으므로 안전한 쪽을 택합니다.
+    const revokedSessions = await revokeAllSessions(req.user.userId, req.user.sid || null);
+
+    return res.status(200).json({
+      success: true,
+      data: { revokedSessions, keptCurrent: !!req.user.sid },
+      message: revokedSessions > 0
+        ? `다른 기기 ${revokedSessions}곳에서 로그아웃했어요.`
+        : '로그아웃할 다른 기기가 없어요.',
+    });
+  } catch (error) {
+    console.error('다른 기기 로그아웃 오류:', error.message);
+    return res.status(500).json({ success: false, data: null, message: '서버 오류로 처리하지 못했습니다.' });
+  }
+});
+
+/**
+ * @swagger
+ * /auth/sessions/{sessionId}:
+ *   delete:
+ *     summary: 특정 기기 로그아웃 (원격 로그아웃)
+ *     description: |
+ *       내 계정에 로그인된 다른 기기를 끊습니다.
+ *       현재 사용 중인 기기는 이 API 로 끊을 수 없습니다 — 로그아웃을 쓰세요.
+ *       (자기 발밑을 끊고 나면 화면이 어떤 상태인지 알 수 없어집니다)
+ *     tags: [Auth]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: 해당 기기 로그아웃됨 }
+ *       400: { description: 현재 기기는 끊을 수 없음 }
+ *       404: { description: 내 세션이 아니거나 이미 끊긴 세션 }
+ */
+router.delete('/sessions/:sessionId', authenticateToken, async (req, res) => {
+  const target = String(req.params.sessionId || '').trim();
+
+  if (!target) {
+    return res.status(400).json({ success: false, data: null, message: '기기 정보가 없습니다.' });
+  }
+  if (target === req.user.sid) {
+    return res.status(400).json({
+      success: false, data: null, code: 'CANNOT_REVOKE_CURRENT',
+      message: '현재 사용 중인 기기예요. 로그아웃 버튼을 이용해 주세요.',
+    });
+  }
+
+  try {
+    // 남의 세션을 지목할 수 없도록 내 목록에 있는지 먼저 확인합니다.
+    //   sessionId 를 알아냈다 해도 다른 사람 세션은 끊을 수 없습니다.
+    const mine = await listActiveSessions(req.user.userId);
+    if (!mine.some((s) => s.sessionId === target)) {
+      return res.status(404).json({
+        success: false, data: null,
+        message: '이미 로그아웃되었거나 찾을 수 없는 기기예요.',
+      });
+    }
+
+    await revokeSession(target);
+    return res.status(200).json({
+      success: true, data: { sessionId: target },
+      message: '해당 기기에서 로그아웃했어요.',
+    });
+  } catch (error) {
+    console.error('기기 로그아웃 오류:', error.message);
+    return res.status(500).json({ success: false, data: null, message: '서버 오류로 로그아웃하지 못했습니다.' });
+  }
+});
+
+/**
+ * @swagger
+ * /auth/sessions:
+ *   delete:
+ *     summary: 현재 기기만 남기고 모두 로그아웃
+ *     description: 기기가 여러 대일 때 한 번에 정리합니다. 현재 기기는 유지됩니다.
+ *     tags: [Auth]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: 정리됨 (revokedCount 포함) }
+ */
+router.delete('/sessions', authenticateToken, async (req, res) => {
+  try {
+    const revokedCount = await revokeAllSessions(req.user.userId, req.user.sid || null);
+    return res.status(200).json({
+      success: true, data: { revokedCount },
+      message: revokedCount > 0
+        ? `다른 기기 ${revokedCount}곳에서 로그아웃했어요.`
+        : '로그아웃할 다른 기기가 없어요.',
+    });
+  } catch (error) {
+    console.error('전체 기기 로그아웃 오류:', error.message);
+    return res.status(500).json({ success: false, data: null, message: '서버 오류로 로그아웃하지 못했습니다.' });
   }
 });
 

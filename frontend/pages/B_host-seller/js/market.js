@@ -422,6 +422,14 @@ function handleMarketCreateSubmit() {
       return;
     }
 
+    // [부스 등급] 이미지 업로드 전에 검사합니다.
+    //   업로드부터 하면 등급이 잘못됐을 때 쓸데없는 파일만 서버에 남습니다.
+    const boothTypeProblem = checkBoothTypes();
+    if (boothTypeProblem) {
+      renderAlert(boothTypeProblem);
+      return;
+    }
+
     // ---- 3) 검증 통과 후에만 이미지 업로드 진행 ----
     await uploadMarketImage();
 
@@ -442,6 +450,10 @@ function handleMarketCreateSubmit() {
       // [초과 신청 허용] 수정 화면에는 있는데 등록 화면 payload 에만 빠져 있었습니다.
       // 체크 안 하면 false = 정원이 차면 신청이 막힙니다. (기존 동작과 동일)
       allowOvercapacity: document.getElementById('allow-overcapacity')?.checked || false,
+      // [부스 등급] 편집기가 붙어 있고 등급이 2개 이상일 때만 보냅니다.
+      //   한 줄만 있으면 기존 단일 가격 마켓과 다를 게 없어, 굳이 등급 테이블을
+      //   만들면 목록·상세가 불필요하게 등급 블록을 그리게 됩니다.
+      ...(getBoothTypesPayload() ? { boothTypes: getBoothTypesPayload() } : {}),
       marketImage: document.getElementById('uploadedImagePath').value || null,
     };
 
@@ -641,7 +653,16 @@ function renderApplicationList() {
           </button>
          </div>
          <div id="inputContainer-${id}" style="display: none; margin-top: 10px;">
-            <input type="text" id="userInput-${id}" placeholder="취소 내용을 입력하세요 (*주최자가 직접 취소 시 100% 환불이 적용됩니다.)">
+            <!-- [환불 예상] 주최자가 직접 취소하면 판매자 잘못이 아니므로 100% 환불입니다.
+                 (판매자가 스스로 취소할 때만 개최일까지 남은 날짜에 따라 비율이 줄어듭니다)
+                 얼마가 나가는지 모르고 누르지 않도록 금액을 먼저 보여줍니다. -->
+            <div class="refund-preview ok host-refund-preview">
+              <span class="refund-preview-label">이 부스를 취소하면</span>
+              <b class="refund-preview-amount">${Number(a.paidAmount ?? a.boothPrice ?? 0).toLocaleString()}원</b>
+              <span class="refund-preview-rate">전액 환불 (100%)</span>
+            </div>
+            <p class="refund-preview-note">주최자가 직접 취소하는 경우라 판매자에게 전액 돌려줍니다.</p>
+            <input type="text" id="userInput-${id}" placeholder="취소 사유를 입력하세요">
             <button type="button" class="btn btn-sage btn-sm" data-action="refunded" data-id="${id}">
             입력 확인
             </button>
@@ -793,6 +814,52 @@ function handleSelectAll(checked) {
   //        단순 텍스트/disabled 갱신(updateToolbar)이 아니라 툴바 전체를 다시 그립니다.
   renderBulkToolbar();
 }
+/**
+ * [환불 예상] 일괄 결제취소 확인 문구에 금액을 넣습니다.
+ *
+ * ── 왜 refundPreview 를 쓰지 않나 ────────────────────────────────
+ *   refundPreview 는 **판매자가 스스로 취소할 때** 적용되는 비율입니다.
+ *   (개최일까지 남은 날짜에 따라 100 / 50 / 30 / 0%)
+ *
+ *   주최자가 취소하는 건 판매자 잘못이 아니라서 **항상 전액 환불**입니다.
+ *   서버(payController.refundPayment)도 금액을 지정하지 않고 결제사에
+ *   전체 취소를 요청합니다. 개별 「결제 취소」 안내도 100% 라고 적혀 있습니다.
+ *
+ *   그래서 여기서 refundPreview 의 비율을 쓰면, 예를 들어 개최 4일 전일 때
+ *   "3,000원 환불" 이라고 안내해 놓고 실제로는 10,000원이 나가게 됩니다.
+ *   결제 금액을 그대로 더합니다.
+ *
+ * ── 금액을 모르는 건이 섞이면 ─────────────────────────────────────
+ *   총액을 단정하지 않습니다. 틀린 숫자를 확신 있게 보여주는 것이
+ *   아무것도 안 보여주는 것보다 나쁩니다.
+ */
+function buildRefundConfirmMessage(ids) {
+  // selectedApplicationIds 는 **문자열**로 담깁니다. Number 로 비교하면
+  // 하나도 안 맞아 금액이 통째로 빠집니다. (같은 파일의 getEligibleApplicationIds 도 String 비교)
+  const idSet = new Set(ids.map((v) => String(v)));
+  const rows = currentApplications.filter((a) => idSet.has(String(a.applicationId)));
+
+  let total = 0;
+  let unknown = 0;
+  rows.forEach((a) => {
+    // 실제 결제액 우선. 없으면 refundPreview 가 들고 있는 결제액, 그것도 없으면 부스료.
+    const paid = a.paidAmount != null ? Number(a.paidAmount)
+               : (a.refundPreview && a.refundPreview.paidAmount != null) ? Number(a.refundPreview.paidAmount)
+               : (a.boothPrice != null ? Number(a.boothPrice) : null);
+    if (paid == null || Number.isNaN(paid)) unknown += 1;
+    else total += paid;
+  });
+
+  let msg = `선택한 ${ids.length}건을 일괄 결제취소(환불) 처리하시겠습니까?`;
+  if (rows.length > 0 && unknown === 0) {
+    msg += `\n\n환불 예상 금액: 총 ${total.toLocaleString()}원 (전액 환불)`;
+    msg += '\n주최자가 취소하는 경우라 판매자에게 전액 돌려줍니다.';
+  } else if (unknown > 0) {
+    msg += '\n\n일부 건의 결제 금액을 확인하지 못했어요. 진행 전 새로고침해 주세요.';
+  }
+  return msg;
+}
+
 async function handleBulkAction(action) {
   // [수정] 선택된 전체가 아니라, 해당 액션이 실제로 적용 가능한(상태가 맞는) 건만 처리 대상으로 삼습니다.
   //        버튼 자체가 적용 가능한 건이 있을 때만 보이므로, 여기 도달했다면 최소 1건은 있습니다.
@@ -802,7 +869,8 @@ async function handleBulkAction(action) {
   const confirmMsgMap = {
     approve: `선택한 ${ids.length}건을 일괄 승인하시겠습니까?`,
     reject: `선택한 ${ids.length}건을 일괄 반려하시겠습니까?`,
-    refund: `선택한 ${ids.length}건을 일괄 결제취소(환불) 처리하시겠습니까?`,
+    // [환불 예상] 얼마가 나가는지 모르고 누르지 않도록 금액을 함께 보여줍니다.
+    refund: buildRefundConfirmMessage(ids),
   };
   if (!confirm(confirmMsgMap[action])) return;
 
@@ -994,6 +1062,41 @@ async function loadApplicationList() {
  * 확인받는 절차가 앞에 붙습니다. 그 절차는 common/js/market-cancel.js 한 곳에 있고
  * 「내 마켓 관리」 화면과 똑같은 것을 씁니다. (두 곳에 복사하면 금액 계산이 갈라집니다)
  */
+/**
+ * [부스 등급] 편집기에서 값을 꺼냅니다.
+ *   - 편집기가 없는 화면(상세 등)이면 null
+ *   - 등급이 1개뿐이면 null — 단일 가격 마켓으로 둡니다
+ * 반환값이 null 이면 payload 에 boothTypes 를 아예 넣지 않습니다.
+ */
+function getBoothTypesPayload() {
+  if (!window.BoothTypes || !document.getElementById('booth-type-list')) return null;
+  const list = window.BoothTypes.getTypes();
+  if (!Array.isArray(list) || list.length < 2) return null;
+  return list;
+}
+
+/**
+ * 등급 입력값을 검사합니다.
+ *   validate() 는 문제가 있으면 **안내 문구(문자열)**, 없으면 null 을 돌려줍니다.
+ * @returns {string|null} 문제가 있으면 그 문구
+ */
+function checkBoothTypes() {
+  if (!window.BoothTypes || !document.getElementById('booth-type-list')) return null;
+  return window.BoothTypes.validate();
+}
+
+/** 등록·수정 화면에서 등급 편집기를 띄웁니다. 없는 화면에서는 조용히 지나갑니다. */
+function mountBoothTypeEditor() {
+  if (!window.BoothTypes || !document.getElementById('booth-type-list')) return;
+  window.BoothTypes.mount({
+    rootId: 'booth-type-list',
+    addBtnId: 'booth-type-add',
+    countId: 'booth-type-count',
+    priceInputId: 'booth-price',
+    priceHintId: 'booth-type-hint',
+  });
+}
+
 function handleMarketEditClick() {
   const btn = document.getElementById('edit-market-btn');
   if (!btn) return;
@@ -1093,6 +1196,100 @@ function handleCloseMarketClick() {
 
 // ---------- 부스 신청 ----------
 
+/**
+ * [부스 등급] 신청 화면의 등급 드롭다운을 채웁니다.
+ *
+ *   등급을 안 쓰는 마켓이면 필드를 통째로 숨깁니다.
+ *   빈 드롭다운이 남아 있으면 "뭘 골라야 하지?" 하고 멈추게 됩니다.
+ *
+ *   마감된 등급은 고를 수 없게 잠그되 목록에는 남깁니다.
+ *   아예 빼버리면 "프리미엄이 원래 없는 마켓" 인지 "마감된" 것인지 알 수 없습니다.
+ */
+async function loadBoothTypesForApply(marketId) {
+  const field = document.getElementById('booth-type-field');
+  const select = document.getElementById('booth-type');
+  if (!field || !select || !marketId) return;
+
+  let types = [];
+  let market = null;
+  try {
+    const res = await callApi(`/markets/${encodeURIComponent(marketId)}`);
+    if (res && res.success) {
+      market = res.data || null;
+      if (Array.isArray(market?.boothTypes)) {
+        types = market.boothTypes.filter((t) => t.isActive !== false);
+      }
+    }
+  } catch (err) {
+    console.error('[부스 등급] 목록을 불러오지 못했어요:', err);
+  }
+
+  if (types.length === 0) {
+    field.hidden = true;
+    return;
+  }
+
+  // [초과 신청 허용] 주최자가 켜두면 정원이 찬 등급도 고를 수 있어야 합니다.
+  //   서버는 이미 허용하는데(resolveBoothTypeForApply) 화면이 disabled 로 잠가서,
+  //   주최자가 옵션을 켜도 판매자는 **여전히 신청할 수 없었습니다.**
+  //
+  //   단, 행사가 시작된 뒤에는 서버도 다시 막습니다. 화면도 같은 조건을 씁니다.
+  //   (여기서 열어두면 눌렀을 때 서버가 거절해 "왜 안 되지" 가 됩니다)
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const eventStart = market?.eventDate_min ? new Date(market.eventDate_min) : null;
+  if (eventStart) eventStart.setHours(0, 0, 0, 0);
+  const beforeEvent = eventStart ? today < eventStart : true;
+  const overAllowed = Number(market?.allowOvercapacity) === 1 && beforeEvent;
+
+  const won = (n) => (Number(n) || 0).toLocaleString() + '원';
+
+  select.innerHTML = types.map((t) => {
+    const cap = Number(t.capacity) || 0;
+    const applied = Number(t.applicationCount) || 0;
+    const isFull = cap > 0 && applied >= cap;
+    // 초과 허용이면 마감돼도 고를 수 있습니다. 대신 "초과 신청" 이라고 알려줍니다.
+    const blocked = isFull && !overAllowed;
+    const left = cap <= 0 ? ''
+      : isFull ? (overAllowed ? ' · 정원 초과 (추가 신청 가능)' : ' · 마감')
+      : ` · ${cap - applied}칸 남음`;
+    return `<option value="${t.boothTypeId}" data-price="${t.price}"${blocked ? ' disabled' : ''}>`
+      + `${t.name} — ${won(t.price)}${left}</option>`;
+  }).join('');
+
+  // 고를 수 없는 등급이 첫 번째면 자동 선택되어 버립니다. 고를 수 있는 첫 등급으로 옮깁니다.
+  const firstPick = types.find((t) => {
+    const cap = Number(t.capacity) || 0;
+    if (cap === 0) return true;
+    if ((Number(t.applicationCount) || 0) < cap) return true;
+    return overAllowed;   // 마감이어도 초과 허용이면 선택 가능
+  });
+  if (firstPick) select.value = String(firstPick.boothTypeId);
+
+  field.hidden = false;
+
+  const hint = document.getElementById('booth-type-hint');
+  const submit = document.querySelector('#booth-apply-form button[type="submit"]');
+  if (submit) submit.disabled = false;
+
+  const anyFull = types.some((t) => {
+    const cap = Number(t.capacity) || 0;
+    return cap > 0 && (Number(t.applicationCount) || 0) >= cap;
+  });
+
+  if (!firstPick) {
+    // 전부 마감이고 초과도 안 되면 신청을 막습니다. 눌러봐야 서버가 거절합니다.
+    if (hint) hint.textContent = '모든 등급이 마감됐어요. 다른 마켓을 찾아보세요.';
+    if (submit) submit.disabled = true;
+  } else if (overAllowed && anyFull) {
+    if (hint) {
+      hint.textContent = '정원이 찬 등급도 신청할 수 있어요. '
+        + '주최자가 초과 신청을 허용해 두었어요. (행사 시작 전까지)';
+    }
+  } else if (hint) {
+    hint.textContent = '등급에 따라 부스료가 달라요. 신청 후에는 바꿀 수 없어요.';
+  }
+}
+
 function prefillBoothApplyForm() {
   const marketIdInput = document.getElementById('market-id');
   if (!marketIdInput) return;
@@ -1110,6 +1307,9 @@ function prefillBoothApplyForm() {
   if (backLink) {
     backLink.href = `market-detail?marketId=${params.get('marketId') || ''}`;
   }
+
+  // [부스 등급] 이 마켓이 등급을 쓰면 드롭다운을 채웁니다.
+  loadBoothTypesForApply(params.get('marketId'));
 
   // [추가] 어떤 주최자의 마켓에 신청하는지 닉네임으로 보여주고, 클릭하면 프로필로 이동합니다.
   renderBoothApplyHost(marketIdInput.value);
@@ -1189,6 +1389,14 @@ function handleBoothApplySubmit() {
       itemName: document.getElementById('item-name').value.trim(),
       productDesc: document.getElementById('product-desc').value.trim(),
     };
+
+    // [부스 등급] 등급을 쓰는 마켓에서만 보냅니다.
+    //   안 쓰는 마켓에 값을 실어 보내면 서버가 무시하지만, 보내지 않는 편이 명확합니다.
+    const typeField = document.getElementById('booth-type-field');
+    const typeSelect = document.getElementById('booth-type');
+    if (typeField && !typeField.hidden && typeSelect && typeSelect.value) {
+      payload.boothTypeId = Number(typeSelect.value);
+    }
 
     if (!payload.boothNumber) {
       renderAlert('부스 번호를 입력해주세요.');
@@ -1709,6 +1917,7 @@ async function refundPayment_seller(a) {
 // ---------- 초기화 ----------
 
 document.addEventListener('DOMContentLoaded', () => {
+  mountBoothTypeEditor();
   handleMarketCreateSubmit();
   wireCreateMarketImageRemove(); // [추가] 마켓 등록 화면 이미지 삭제 버튼
   loadMarketDetail();

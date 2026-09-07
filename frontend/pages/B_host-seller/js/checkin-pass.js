@@ -214,14 +214,31 @@
       timerText: $('chk-timer-text'),
     };
 
+    // 주소의 쿼리 -> 버튼 누를 때 저장해 둔 값 순으로 찾습니다.
+    //   개발 서버가 주소를 정리하면서 ?marketId=... 를 버리는 일이 있어,
+    //   그것만 믿으면 화면은 열리는데 어느 마켓인지 모르게 됩니다.
     var params = new URLSearchParams(window.location.search);
     state.marketId = Number(params.get('marketId'));
     state.eventDate = params.get('eventDate') || todayStr();
 
     if (!state.marketId) {
-      banner('error', '어느 마켓인지 알 수 없어요. 「내 부스 관리」에서 다시 들어와 주세요.');
+      var saved = Number(sessionStorage.getItem('checkinMarketId'));
+      if (saved) {
+        state.marketId = saved;
+        try {
+          var u = new URL(window.location.href);
+          u.searchParams.set('marketId', String(saved));
+          window.history.replaceState(null, '', u.toString());
+        } catch (e) { /* 주소 갱신 실패는 무시 */ }
+      }
+    }
+
+    if (!state.marketId) {
+      banner('error', '어느 마켓인지 알 수 없어요. 「내 부스 관리」에서 「입장 QR」 버튼으로 다시 들어와 주세요.');
       return;
     }
+
+    sessionStorage.setItem('checkinMarketId', String(state.marketId));
 
     // 로그인 필수 — 누가 입장하는지 모르면 QR 을 만들 수 없습니다.
     if (typeof ensureSession === 'function') {

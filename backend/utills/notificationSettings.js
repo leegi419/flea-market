@@ -14,63 +14,131 @@
 //   기존 사용자에게 행을 미리 만들어 넣지 않습니다. (수천 행을 미리 채울 이유가 없음)
 //   행이 없으면 기본값으로 봅니다. 사용자가 토글을 건드린 것만 저장됩니다.
 
-/** 알림 묶음 정의. 화면 순서 = 이 순서 */
+/**
+ * 알림 묶음 정의.
+ *
+ * ── 왜 역할로 나누는가 ────────────────────────────────────────────
+ *   이 사이트는 주최자도 판매자로 전환해 부스를 신청할 수 있습니다.
+ *   그래서 한 사람이 두 역할의 알림을 함께 받습니다.
+ *
+ *   예전에는 「부스 신청」 묶음 하나에 주최자용(신청 들어옴)과
+ *   판매자용(승인·반려)이 같이 들어 있어서, 하나를 끄면 **양쪽이 같이 꺼졌습니다.**
+ *   "내가 주최한 마켓 알림만 끄고 싶다" 를 할 수 없었습니다.
+ *
+ *   이제 role 로 나눠 각각 따로 켜고 끕니다.
+ *     host   = 내가 주최한 마켓에서 오는 알림
+ *     seller = 내가 참가하는 마켓에서 오는 알림
+ *
+ * ── 한 타입이 양쪽에 있을 수 있나 ─────────────────────────────────
+ *   없습니다. 알림 타입마다 audience(host/seller)가 하나로 정해져 있어,
+ *   타입 하나는 반드시 한쪽 역할에만 속합니다.
+ */
 export const NOTIFICATION_CATEGORIES = [
+  /* ── 주최자 알림 ── */
   {
-    key: 'application',
-    label: '부스 신청·승인·반려',
-    description: '신청이 들어오거나, 승인·반려됐을 때',
-    types: ['application_received', 'application_approved', 'application_rejected',
-            'application_cancelled', 'application_duplicate'],
+    key: 'host_application',
+    role: 'host',
+    label: '부스 신청 접수',
+    description: '내 마켓에 부스 신청이 들어오거나 판매자가 신청을 취소했을 때',
+    types: ['application_received', 'application_cancelled', 'application_duplicate'],
     lockedOn: false,
   },
   {
-    key: 'payment',
-    label: '결제 · 환불',
-    description: '결제가 완료되거나 환불이 처리됐을 때',
-    types: ['payment_completed', 'refund_completed', 'refund_requested'],
+    key: 'host_payment',
+    role: 'host',
+    label: '결제 · 환불 요청',
+    description: '판매자가 결제를 마쳤거나 환불을 요청했을 때',
+    // refund_processed 는 주최자 전용입니다.
+    //   판매자에게 가는 refund_completed 와 타입을 나눠야
+    //   역할별 설정이 서로를 건드리지 않습니다.
+    //   (한 타입을 양쪽이 나눠 쓰면 어느 묶음에 넣어도 한쪽이 틀립니다)
+    types: ['payment_completed', 'refund_requested', 'refund_processed'],
     lockedOn: false,
   },
   {
-    key: 'comment',
-    label: '댓글 · 대댓글',
-    description: '내 마켓에 댓글이 달리거나 내 댓글에 답글이 달렸을 때',
-    types: ['market_comment_received', 'comment_reply_received'],
+    key: 'host_comment',
+    role: 'host',
+    label: '내 마켓 댓글',
+    description: '내가 주최한 마켓에 댓글이 달렸을 때',
+    types: ['market_comment_received'],
+    lockedOn: false,
+  },
+
+  /* ── 판매자 알림 ── */
+  {
+    key: 'seller_application',
+    role: 'seller',
+    label: '승인 · 반려',
+    description: '신청한 부스가 승인되거나 반려됐을 때',
+    types: ['application_approved', 'application_rejected'],
     lockedOn: false,
   },
   {
-    key: 'market_change',
+    key: 'seller_payment',
+    role: 'seller',
+    label: '환불 완료',
+    description: '환불이 처리됐을 때',
+    types: ['refund_completed'],
+    lockedOn: false,
+  },
+  {
+    key: 'seller_comment',
+    role: 'seller',
+    label: '내 댓글 답글',
+    description: '내가 쓴 댓글에 답글이 달렸을 때',
+    types: ['comment_reply_received'],
+    lockedOn: false,
+  },
+  {
+    key: 'seller_market_change',
+    role: 'seller',
     label: '마켓 취소 · 변경',
     description: '참가 중인 마켓이 취소되거나 일정이 바뀌었을 때',
     types: ['market_cancelled', 'market_changed'],
     // 돈이 걸린 알림이라 끌 수 없습니다.
+    //   결제한 판매자가 이걸 꺼두면 마켓이 취소되고 환불된 것을 모른 채
+    //   당일 현장에 갈 수 있습니다.
     lockedOn: true,
   },
   {
-    key: 'deadline',
+    key: 'seller_deadline',
+    role: 'seller',
     label: '마감 임박 알림',
     description: '모집 종료 1일 전, 결제 마감 전에 미리 알려드려요',
     types: ['recruit_closing', 'payment_due'],
     lockedOn: false,
-    hasLeadHours: true,   // 이 묶음만 "몇 시간 전" 설정이 붙습니다
+    hasLeadHours: true,
   },
   {
-    key: 'attendance',
+    key: 'seller_attendance',
+    role: 'seller',
     label: '현장 참여 기록',
     description: '마켓이 끝난 뒤 체크인 기록이 없을 때 알려드려요',
     types: ['absence_recorded'],
-    // 프로필에 남는 기록이라 본인은 알아야 하지만, 돈이 즉시 오가는 건 아니라 끌 수 있게 둡니다.
     lockedOn: false,
+    hasNotifyHour: true,
   },
   {
-    key: 'new_market',
+    key: 'seller_new_market',
+    role: 'seller',
     label: '신규 마켓 등록',
     description: '관심 지역에 새 마켓이 열렸을 때',
     types: ['new_market'],
     lockedOn: false,
-    hasRegions: true,     // 이 묶음만 지역 설정이 붙습니다
+    hasRegions: true,
   },
 ];
+
+/** 역할별로 묶음을 골라냅니다. */
+export function categoriesForRole(role) {
+  return NOTIFICATION_CATEGORIES.filter((c) => c.role === role);
+}
+
+/** 알림 타입이 속한 역할 */
+export function roleOfType(type) {
+  const c = NOTIFICATION_CATEGORIES.find((x) => x.types.includes(String(type)));
+  return c ? c.role : null;
+}
 
 /** 결제 마감 사전 알림 시간의 허용 범위 (결제 기한이 24시간이라 그 이상은 의미 없음) */
 export const LEAD_HOURS_MIN = 1;
@@ -125,7 +193,7 @@ export async function getUserNotificationSettings(db, userId) {
 
   try {
     const [rows] = await db.query(
-      'SELECT category, enabled, leadHours, notifyHour FROM notification_settings WHERE userId = ?', [userId]
+      'SELECT role, category, enabled, leadHours, notifyHour FROM notification_settings WHERE userId = ?', [userId]
     );
     const [regionRows] = await db.query(
       'SELECT region FROM notification_regions WHERE userId = ?', [userId]
@@ -136,8 +204,8 @@ export async function getUserNotificationSettings(db, userId) {
     let notifyHour = NOTIFY_HOUR_DEFAULT;
     for (const r of rows) {
       categories[r.category] = Number(r.enabled) === 1;
-      if (r.category === 'deadline') leadHours = clampLeadHours(r.leadHours);
-      if (r.category === 'attendance') notifyHour = clampNotifyHour(r.notifyHour);
+      if (r.category === 'seller_deadline') leadHours = clampLeadHours(r.leadHours);
+      if (r.category === 'seller_attendance') notifyHour = clampNotifyHour(r.notifyHour);
     }
 
     return {
@@ -162,6 +230,7 @@ export function shouldReceive(settings, type) {
   const key = categoryOfType(type);
   if (!key) return true;                    // 묶음에 없는 타입은 그대로 보냅니다
   if (isLockedCategory(key)) return true;   // 끌 수 없는 묶음
+  // 묶음 키에 역할이 들어 있어(host_/seller_) 키 하나로 구분됩니다.
   const v = settings?.categories?.[key];
   return v === undefined ? true : v;        // 설정한 적 없으면 켜짐
 }
@@ -201,7 +270,7 @@ export async function findNewMarketRecipients(db, region, excludeUserId) {
     const [rows] = await db.query(
       `SELECT u.userId
          FROM users u
-         LEFT JOIN notification_settings s ON s.userId = u.userId AND s.category = 'new_market'
+         LEFT JOIN notification_settings s ON s.userId = u.userId AND s.category = 'seller_new_market'
         WHERE u.userId <> ?
           AND (s.enabled IS NULL OR s.enabled = 1)
           AND (

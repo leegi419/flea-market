@@ -37,6 +37,21 @@ async function loadMarketForEdit(marketId) {
     // 텍스트/숫자 필드 채우기
     document.getElementById('title').value = market.title || '';
     document.getElementById('booth-price').value = market.boothPrice ?? 0;
+
+    // [부스 등급] 이미 등급이 있으면 편집기에 채워 넣습니다.
+    //   빈 상태로 두면 저장 시 등급이 통째로 사라진 것으로 처리됩니다.
+    if (window.BoothTypes && document.getElementById('booth-type-list')) {
+      window.BoothTypes.mount({
+        rootId: 'booth-type-list',
+        addBtnId: 'booth-type-add',
+        countId: 'booth-type-count',
+        priceInputId: 'booth-price',
+        priceHintId: 'booth-type-hint',
+      });
+      if (Array.isArray(market.boothTypes) && market.boothTypes.length > 0) {
+        window.BoothTypes.setTypes(market.boothTypes);
+      }
+    }
     document.getElementById('max-participants').value = market.maxParticipants ?? 0;
     const overcapacityEl = document.getElementById('allow-overcapacity');
     if (overcapacityEl) overcapacityEl.checked = Number(market.allowOvercapacity) === 1;
@@ -156,7 +171,20 @@ function correctionMarketClick(marketId) {
       marketImage: document.getElementById('uploadedImagePath').value || null,
     };
 
-    console.log('마켓 수정 payload:', payload);
+    // [부스 등급] 편집기가 있으면 항상 보냅니다.
+    //   등록과 달리 여기서는 1개여도 보내야 합니다 — 등급을 지워서 1개로 줄인 것도
+    //   저장돼야 하는데, 안 보내면 서버가 "변경 없음" 으로 보고 그대로 둡니다.
+    if (window.BoothTypes && document.getElementById('booth-type-list')) {
+      // validate() 는 문제가 있으면 **안내 문구(문자열)**, 없으면 null 을 돌려줍니다.
+      const problem = window.BoothTypes.validate();
+      if (problem) {
+        renderAlert(problem);
+        setButtonLoading(submitBtn, false, '수정 중...', '수정하기');
+        return;
+      }
+      payload.boothTypes = window.BoothTypes.getTypes();
+    }
+
 
     setButtonLoading(submitBtn, true, '수정 중...', '수정하기');
     try {

@@ -12,22 +12,16 @@
     />
     <link rel="stylesheet" href="../../common/css/style.css?v=5" />
     <link rel="stylesheet" href="../../common/css/notification-settings.css?v=3" />
-    <script src="../../common/js/role-routing.js?v=5"></script>
-    <link rel="stylesheet" href="../../common/css/global-nav.css?v=4" />
-    <script src="../../common/js/global-nav.js?v=5" defer></script>
   </head>
 
   <body>
     <div class="page-wrap">
-      <header class="nav">
-        <a href="../../index.html" class="brand"><span class="pin-dot" aria-hidden="true"></span>플리마켓</a>
-        <a href="mypage.html" class="link-ghost">마이페이지</a>
-      </header>
-
       <div class="panel ns-wrap">
         <span class="pin" aria-hidden="true"></span>
-        <h1>알림 설정</h1>
-        <p class="panel-sub">받고 싶은 알림만 켜두세요. 끈 알림은 종 버튼에도 쌓이지 않아요.</p>
+
+        <p class="ns-step" id="onb-step" hidden></p>
+        <h1 id="onb-title">알림 설정</h1>
+        <p class="panel-sub" id="onb-sub">받고 싶은 알림만 켜두세요. 나중에 마이페이지에서 바꿀 수 있어요.</p>
 
         <div id="ns-banner" class="ns-banner" hidden></div>
 
@@ -35,14 +29,17 @@
           <p class="ns-loading">불러오는 중이에요…</p>
         </div>
 
-        <div class="ns-actions">
-          <button type="button" class="btn btn-mustard" id="ns-save">저장</button>
-          <span class="ns-hint" id="ns-dirty"></span>
+        <div class="ns-actions onb-actions">
+          <button type="button" class="btn btn-ghost" id="onb-skip">나중에 하기</button>
+          <button type="button" class="btn btn-mustard" id="onb-next">다음</button>
         </div>
+        <p class="ns-hint" id="onb-hint">
+          지금 넘어가도 모든 알림이 켜진 상태로 시작해요.
+        </p>
       </div>
     </div>
 
     <script src="../../common/js/api.js?v=4"></script>
-    <script src="js/notification-settings.js?v=3"></script>
+    <script src="js/notification-onboarding.js?v=2"></script>
   </body>
 </html>

@@ -166,10 +166,13 @@ export async function refundPayment(req, res) {
     const [rows] = await pool.query(
       /*sql*/
       `SELECT p.paymentId, p.paymentKey, p.status, p.amount, p.refundAmount, m.hostId,
-              a.sellerId, a.boothNumber, a.itemName, a.marketId, m.title AS marketTitle
+              a.sellerId, a.boothNumber, a.itemName, a.marketId, m.title AS marketTitle,
+              -- [주최자 알림] 누구에게 환불했는지 적으려면 판매자 이름이 필요합니다.
+              su.nickname AS sellerNickname
        FROM payments p
        JOIN applications a ON a.applicationId = p.applicationId
        JOIN markets m ON m.marketId = a.marketId
+       LEFT JOIN users su ON su.userId = a.sellerId
        WHERE p.applicationId = ?`,
       [applicationId]
     );
@@ -206,14 +209,40 @@ export async function refundPayment(req, res) {
       WHERE applicationId = ?`,
       [applicationId]);
 
-    // [추가] 환불 완료 -> 판매자에게 알림
+    // 주최자가 직접 취소하면 전액, 판매자 요청을 승인한 경우엔 미리 계산해 둔 금액입니다.
     const refundedAmount = payment.status === 'RefundRequested' ? payment.refundAmount : payment.amount;
+    const amountText = `${Number(refundedAmount || 0).toLocaleString()}원`;
+    const boothText = `${payment.boothNumber}번 부스(${payment.itemName})`;
+
+    // 환불 완료 -> 판매자에게 알림
     await createNotification({
       userId: payment.sellerId,
       audience: 'seller',
       type: 'refund_completed',
       title: '환불 완료',
-      message: `"${payment.marketTitle}" 마켓 ${payment.boothNumber}번 부스(${payment.itemName}) 환불이 완료되었습니다. (${Number(refundedAmount || 0).toLocaleString()}원)`,
+      message: `"${payment.marketTitle}" 마켓 ${boothText} 환불이 완료되었습니다. (${amountText})`,
+      marketId: payment.marketId,
+      applicationId: Number(applicationId),
+    });
+
+    // [추가] 주최자에게도 남깁니다.
+    //   예전에는 판매자에게만 보냈습니다. 그래서 주최자 알림 내역에는
+    //   「부스 결제 완료」만 쌓이고 **그 돈이 언제 나갔는지는 기록이 없었습니다.**
+    //   정산 내역과 대조할 근거가 사라지고, 나중에 "환불한 적 없다" 는 다툼이 생깁니다.
+    //
+    //   판매자가 요청해서 승인한 것인지, 주최자가 직접 취소한 것인지도 구분해 적습니다.
+    //   금액이 달라지는 이유(전액이냐 비율이냐)가 여기서 갈리기 때문입니다.
+    const byRequest = payment.status === 'RefundRequested';
+    await createNotification({
+      userId: payment.hostId,
+      audience: 'host',
+      // 판매자에게 가는 refund_completed 와 타입을 나눕니다.
+      //   같은 타입이면 알림 설정에서 한쪽만 끌 수 없습니다.
+      type: 'refund_processed',
+      title: byRequest ? '환불 요청 승인 완료' : '결제 취소 완료',
+      message: `"${payment.marketTitle}" 마켓 ${boothText} ${payment.sellerNickname || '판매자'}님에게 `
+        + `${amountText}을 환불했어요.`
+        + (byRequest ? ' (판매자 요청 승인)' : ' (주최자 직접 취소 · 전액)'),
       marketId: payment.marketId,
       applicationId: Number(applicationId),
     });

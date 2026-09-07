@@ -270,3 +270,157 @@ body.market-is-cancelled #select-all-checkbox {
   display: none !important;
 }
 body.market-is-cancelled #application-list .item-card-actions:empty { display: none; }
+
+/* ── 부스 등급 (메인 카드) ────────────────────────────── */
+.grade-block {
+  border: 1px solid #d9cdb8; border-radius: 10px;
+  padding: 9px 10px; margin: 8px 0; background: #fff;
+}
+.grade-title { font-size: .78rem; color: #6b5a4a; font-weight: 700; margin-bottom: 6px; }
+
+.grade-row {
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+  padding: 5px 0; border-top: 1px dashed #e6ddcd; font-size: .84rem;
+}
+.grade-row:first-of-type { border-top: none; }
+
+.grade-name {
+  font-weight: 700; border-radius: 999px; padding: 2px 9px; font-size: .76rem; white-space: nowrap;
+}
+/* 기본(스탠다드)은 차분하게, 위로 갈수록 눈에 띄게 */
+.grade-row.standard .grade-name { background: #e6ddcd; color: #4a3a2a; }
+.grade-row.premium  .grade-name { background: #E0912F; color: #2A1C12; }
+.grade-row.special  .grade-name { background: #2A1C12; color: #FBF6EC; }
+
+.grade-price { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.grade-diff {
+  font-size: .74rem; font-weight: 700; border-radius: 999px; padding: 1px 7px;
+}
+.grade-diff.up   { background: #fdeaea; color: #c0392b; }
+.grade-diff.down { background: #e7f6ec; color: #1d5f34; }
+
+.grade-count {
+  margin-left: auto; font-size: .78rem; color: #6b5a4a;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.grade-bar {
+  flex: 0 0 64px; height: 6px; background: #e6ddcd;
+  border-radius: 4px; overflow: hidden; display: inline-block;
+}
+.grade-bar i { display: block; height: 100%; }
+.grade-bar i.ok   { background: #2f8f4e; }
+.grade-bar i.warn { background: #E0912F; }
+.grade-bar i.full { background: #c0392b; }
+
+@media (max-width: 480px) {
+  .grade-count { margin-left: 0; }
+  .grade-bar { flex-basis: 100%; }
+}
+
+/* ── 부스 등급 편집기 (등록·수정 화면) ────────────────── */
+.booth-type-label {
+  display: inline-block; font-weight: 700; font-size: .78rem;
+  border-radius: 999px; padding: 2px 10px; margin-right: 6px;
+}
+.booth-type-label.tone-standard { background: #e6ddcd; color: #4a3a2a; }
+.booth-type-label.tone-premium  { background: #E0912F; color: #2A1C12; }
+.booth-type-label.tone-special  { background: #2A1C12; color: #FBF6EC; }
+.booth-type-label em { font-style: normal; color: #c0392b; font-size: .72rem; }
+
+.form-optional {
+  background: #e6ddcd; color: #4a3a2a; border-radius: 999px;
+  padding: 1px 8px; font-size: .72rem; font-weight: 600; margin-left: 4px;
+}
+
+/* ── 부스 등급 편집기: 한 줄 배치 ─────────────────────────
+   가격·수량 입력칸과 단위(원/칸)를 한 줄에 붙입니다.
+   스타일이 없을 때는 전부 세로로 쌓여, 등급 하나가 화면 절반을 차지했습니다. */
+
+.booth-type-row-wrap {
+  border: 1px solid #d9cdb8; border-radius: 10px;
+  background: #fff; padding: 10px 12px; margin-bottom: 8px;
+}
+.booth-type-row-wrap.is-locked-row { background: #f6f2ea; }
+.booth-type-row-wrap.is-stopped { opacity: .7; }
+
+.booth-type-row {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
+/* 등급 배지는 줄어들지 않게 고정 */
+.booth-type-row .booth-type-label { flex: 0 0 auto; margin-right: 2px; }
+
+/* 입력칸 + 단위를 한 덩어리로. 단위가 칸 오른쪽에 붙습니다. */
+.booth-type-price-wrap,
+.booth-type-cap-wrap {
+  display: flex; align-items: center; gap: 5px;
+}
+/* 가격은 자릿수가 많아 넓게, 수량은 좁게 */
+.booth-type-price-wrap { flex: 1 1 140px; min-width: 120px; }
+.booth-type-cap-wrap   { flex: 0 1 110px; min-width: 96px; }
+
+.booth-type-row .form-input {
+  width: 100%; min-width: 0;
+  text-align: right;               /* 숫자는 오른쪽 정렬이 읽기 쉽습니다 */
+  font-variant-numeric: tabular-nums;
+  padding: 8px 10px;
+}
+.booth-type-unit {
+  flex: 0 0 auto; color: #6b5a4a; font-size: .88rem; white-space: nowrap;
+}
+
+/* 삭제 버튼은 오른쪽 끝으로 */
+.booth-type-row .booth-type-remove,
+.booth-type-row button {
+  flex: 0 0 auto; margin-left: auto;
+  border: 1px solid #c0392b; background: #fff; color: #c0392b;
+  border-radius: 8px; padding: 6px 12px; font-size: .82rem;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.booth-type-row button:hover { background: #fdeaea; }
+
+.booth-cap-summary { font-size: .84rem; color: #6b5a4a; margin: 6px 0 10px; }
+.booth-cap-summary.warn { color: #8a5407; }
+.booth-cap-summary.error { color: #c0392b; font-weight: 600; }
+
+/* 좁은 화면에서는 가격 한 줄, 수량 한 줄로 나눕니다.
+   억지로 한 줄에 밀어넣으면 입력칸이 너무 좁아 숫자가 안 보입니다. */
+@media (max-width: 480px) {
+  .booth-type-price-wrap { flex: 1 1 100%; }
+  .booth-type-cap-wrap { flex: 1 1 100%; }
+  .booth-type-row button { margin-left: 0; }
+}
+
+/* ── 환불 예상 금액 ────────────────────────────────────── */
+.refund-preview {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  border: 2px solid #2A1C12; border-radius: 10px;
+  padding: 12px 14px; margin: 8px 0;
+}
+.refund-preview.ok   { background: #f6fbf7; border-color: #2f8f4e; }
+.refund-preview.none { background: #fdeaea; border-color: #c0392b; }
+
+.refund-preview-label { font-size: .88rem; color: #4a3a2a; }
+.refund-preview-amount {
+  font-size: 1.5rem; font-variant-numeric: tabular-nums;
+}
+.refund-preview.ok   .refund-preview-amount { color: #1d5f34; }
+.refund-preview.none .refund-preview-amount { color: #c0392b; }
+.refund-preview-rate { font-size: .82rem; color: #6b5a4a; margin-left: auto; }
+
+.refund-preview-note { font-size: .86rem; color: #4a3a2a; line-height: 1.6; margin: 0 0 12px; }
+.refund-preview-fallback { color: #8a5407; font-size: .88rem; }
+
+/* 규정표 — 지금 적용되는 줄을 강조 */
+.refund-policy-row.is-current {
+  background: #fdf3e0; font-weight: 700; border-radius: 6px;
+}
+.refund-policy-row.is-current b { color: #8a5407; }
+
+@media (max-width: 480px) {
+  .refund-preview-rate { margin-left: 0; width: 100%; }
+}
+
+/* 주최자 개별 결제취소 — 전액 환불 안내 */
+.host-refund-preview { margin-bottom: 6px; }

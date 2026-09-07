@@ -502,54 +502,20 @@ function renderBoothCard(a) {
       ? `
     <span class="payment-area">
       <button type="button" class="btn btn-sage btn-sm" data-action="refunded"
-      onclick="requestRefund_btn(${id}, '${status}',${refundAmount})" id = "refunded_btn">환불 요청</button>
+      onclick="requestRefund_btn(${id}, '${status}',${refundAmount})" id="refunded_btn_${id}">환불 요청</button>
     </span>
-<div id="inputContainer" class="refund-policy-box" style="display: none;">
-  <div class="refund-policy-title">환불 규정</div>
-
-  <div class="refund-policy-table">
-    <div class="refund-policy-row refund-policy-header">
-      <span>내용</span>
-      <span>환불 범위</span>
-    </div>
-    <div class="refund-policy-row">
-      <span>개최 7일 전까지 결제 취소</span>
-      <span class="refund-rate full">
-      <span>
-      예상 환불 금액 ${a.boothPrice} |
-      </span>
-      100%
-      </span>
-    </div>
-    <div class="refund-policy-row">
-      <span>개최 5일 전까지 결제 취소</span>
-      <span class="refund-rate half">
-      <span>
-      예상 환불 금액 ${a.boothPrice * 0.5} |
-      </span>
-      50%
-      </span>
-    </div>
-    <div class="refund-policy-row">
-      <span>개최 3일 전까지 결제 취소</span>
-      <span class="refund-rate none">
-      <span>
-      환불 불가 |
-      </span>
-      0%
-      </span>
-    </div>
-  </div>
+<div id="inputContainer_${id}" class="refund-policy-box" style="display: none;">
+  ${renderRefundPreview(a)}
 
   <div class="refund-confirm-row">
     <label class="refund-checkbox-label">
-      <span>동의하십니까?</span>
-      <input type="checkbox" id="myCheckbox" />
+      <span>위 내용을 확인했어요</span>
+      <input type="checkbox" id="myCheckbox_${id}" />
     </label>
-    <input type="text" id="userInput" class="form-input refund-input" placeholder="취소 내용을 입력하세요" />
+    <input type="text" id="userInput_${id}" class="form-input refund-input" placeholder="취소 사유를 입력하세요" />
     <button type="button" class="btn btn-sage btn-sm" data-action="refunded"
       onclick="requestRefund_(${id}, '${status}')">
-      입력 확인
+      환불 요청하기
     </button>
   </div>
 </div>
@@ -634,16 +600,71 @@ function renderMarketCancelReason(a) {
   </p>`;
 }
 
+/**
+ * [환불 예상 금액] 서버가 계산해 준 값을 그립니다.
+ *
+ *   예전에는 화면이 규정표를 직접 그리며 비율을 하드코딩했습니다.
+ *   그래서 **서버와 어긋나 있었습니다.**
+ *     화면: 100% / 50% / 0%      (3일 전은 "환불 불가" 라고 안내)
+ *     서버: 100% / 50% / 30% / 0% (3~4일 전이면 30% 환불)
+ *   판매자는 못 받는 줄 알고 포기했는데 실제로는 30% 를 받을 수 있었습니다.
+ *
+ *   또 규정표만 나열하고 **"지금 누르면 얼마" 를 알려주지 않았습니다.**
+ *   이제 적용될 금액을 맨 위에 크게 보여주고, 규정표에는 현재 구간을 표시합니다.
+ */
+function renderRefundPreview(a) {
+  const p = a.refundPreview;
+
+  // 서버가 예상 정보를 안 준 경우(구버전 API 등)에는 금액을 지어내지 않습니다.
+  // 틀린 금액을 보여주느니 안내를 띄우는 편이 낫습니다.
+  if (!p) {
+    return `<div class="refund-policy-title">환불 안내</div>
+      <p class="refund-preview-fallback">환불 예상 금액을 불러오지 못했어요.
+      새로고침 후 다시 시도해 주세요.</p>`;
+  }
+
+  const won = (n) => (Number(n) || 0).toLocaleString();
+
+  const rows = (p.tiers || []).map((t) => `
+    <div class="refund-policy-row${t.current ? ' is-current' : ''}">
+      <span>${escapeHtml(t.label)}${t.current ? ' <b>(지금)</b>' : ''}</span>
+      <span class="refund-rate">${won(t.amount)}원 · ${t.percent}%</span>
+    </div>`).join('');
+
+  return `
+    <div class="refund-policy-title">환불 안내</div>
+
+    <div class="refund-preview ${p.refundable ? 'ok' : 'none'}">
+      <span class="refund-preview-label">지금 취소하면</span>
+      <b class="refund-preview-amount">${won(p.amount)}원</b>
+      <span class="refund-preview-rate">결제 ${won(p.paidAmount)}원의 ${p.percent}%</span>
+    </div>
+    <p class="refund-preview-note">${escapeHtml(p.notice)}</p>
+
+    <div class="refund-policy-table">
+      <div class="refund-policy-row refund-policy-header">
+        <span>환불 규정</span>
+        <span>돌려받는 금액</span>
+      </div>
+      ${rows}
+    </div>`;
+}
+
 // [현장 QR 체크인] 「입장 QR」 진입 버튼.
 //   현장에서 판매자가 이 화면을 열어 주최자에게 보여주고, 주최자가 QR 을 찍으면 출석이 기록됩니다.
 //   승인·결제된 부스에만 나오고, 마켓이 취소됐으면 숨깁니다.
+//   주소에 .html 을 붙이지 마세요 — 개발 서버 리다이렉트가 쿼리스트링을 버려
+//   marketId 가 사라집니다.
 //   개최일이 아니어도 버튼은 보여줍니다 — 눌러 보면 화면이 "아직 시작 전"이라고 알려주는 편이,
 //   버튼이 아예 없어서 어디서 여는지 못 찾는 것보다 낫습니다.
 function renderCheckinPassLink(a) {
   const status = a.status;
   if (status !== 'Approved' && status !== 'Paid') return '';
   if (Number(a.marketIsExpired) === 2) return '';
-  return `<a class="btn btn-mustard btn-sm" href="checkin-pass.html?marketId=${a.marketId}">입장 QR</a>`;
+  // 개발 서버가 주소를 정리하면서 쿼리스트링을 버리는 일이 있어,
+  // 눌린 마켓을 sessionStorage 에도 남깁니다. (화면이 쿼리 없이 열려도 복구됩니다)
+  return `<a class="btn btn-mustard btn-sm" href="checkin-pass?marketId=${a.marketId}"
+     onclick="try{sessionStorage.setItem('checkinMarketId','${a.marketId}')}catch(e){}">입장 QR</a>`;
 }
 
 // 승인된 신청의 결제 영역: 결제 완료 / 타임아웃 / 결제하기+타이머 셋 중 하나만 렌더링
@@ -858,9 +879,20 @@ async function handleReviewSubmit(id) {
     renderAlert('서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.');
   }
 }
+/**
+ * [환불 요청 패널 열기/닫기]
+ *
+ *   예전에는 id 가 'inputContainer' · 'refunded_btn' 처럼 **모든 부스에서 같았습니다.**
+ *   getElementById 는 문서에서 **첫 번째 것만** 찾으므로,
+ *   3번 부스의 「환불 요청」을 눌러도 **맨 위 부스의 패널이 열렸습니다.**
+ *   신청 번호를 붙여 부스마다 다른 id 를 쓰도록 고쳤습니다.
+ */
 function requestRefund_btn(a_id, a_status, p_refundAmount) {
-  const inputContainer = document.getElementById('inputContainer');
-  const btnText = document.getElementById('refunded_btn');
+  const inputContainer = document.getElementById(`inputContainer_${a_id}`);
+  const btnText = document.getElementById(`refunded_btn_${a_id}`);
+  // 목록을 다시 그리는 사이에 눌리면 요소가 없을 수 있습니다.
+  if (!inputContainer || !btnText) return;
+
   if (inputContainer.style.display === 'none') {
     btnText.textContent = '환불 요청 취소';
     inputContainer.style.display = 'block'
@@ -872,8 +904,10 @@ function requestRefund_btn(a_id, a_status, p_refundAmount) {
 }
 // 결제 환불 요청
 async function requestRefund_(a_id, a_status) {
-  const checkbox = document.getElementById('myCheckbox');
-  const inputContainer = document.getElementById('inputContainer');
+  // 여기도 같은 문제였습니다. 다른 부스의 체크박스를 보고 판단했습니다.
+  const checkbox = document.getElementById(`myCheckbox_${a_id}`);
+  const inputContainer = document.getElementById(`inputContainer_${a_id}`);
+  if (!checkbox || !inputContainer) return;
   if (!checkbox.checked) {
     alert('약관에 동의하셔야 요청을 보낼 수 있습니다.');
     return;
@@ -881,7 +915,8 @@ async function requestRefund_(a_id, a_status) {
   if (a_status != 'Paid')
     return;
   try {
-    const data = await requestRefund(a_id, inputContainer.querySelector('#userInput').value);
+    const reasonEl = document.getElementById(`userInput_${a_id}`);
+    const data = await requestRefund(a_id, reasonEl ? reasonEl.value : '');
     if (data && data.success) {
       renderAlert('환불 요청이 접수 되었습니다.', 'success')
       await loadMyBoothList();

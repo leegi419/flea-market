@@ -16,7 +16,17 @@
 
   // 체크인 기록이 하나도 없으면(=아직 이 기능을 쓴 적 없는 마켓만 있으면) 지표를 아예 숨깁니다.
   // "노쇼 0회"가 늘 떠 있으면 새 사용자에게 의미 없는 정보만 늘어납니다.
-  var HIDE_WHEN_NO_DATA = true;
+  // [표시 정책] 기록이 없어도 "아직 없음" 을 보여줍니다.
+  //
+  //   예전에는 체크인이 운영된 마켓이 없으면(totalMarkets === 0) 통째로 숨겼습니다.
+  //   그런데 이 항목을 가장 필요로 하는 사람은 **신청자를 심사하는 주최자**입니다.
+  //   아무것도 안 보이면 "노쇼가 없는 사람" 인지 "아직 기록이 쌓이지 않은 사람" 인지
+  //   구분할 수 없어, 판단할 근거가 없는 채로 승인·반려를 해야 합니다.
+  //
+  //   그래서 숨기지 않고 0 과 안내 문구를 보여줍니다.
+  //   참여 이력은 **마켓이 끝난 뒤** 집계되므로, 신규 판매자나
+  //   아직 진행 중인 마켓만 신청한 사람은 정상적으로 0 입니다.
+  var HIDE_WHEN_NO_DATA = false;
 
   function findStatsBlock() {
     // 판매자 통계 카드가 있으면 그 안, 없으면 프로필 섹션 어디든.
@@ -135,6 +145,19 @@
     // available=false 는 체크인 테이블이 없는 DB(마이그레이션 전)라는 뜻입니다.
     if (!stats.available) return;
     if (HIDE_WHEN_NO_DATA && stats.totalMarkets === 0) return;
+
+    // 기록이 아직 없는 경우: 숫자 대신 안내 한 줄만 붙입니다.
+    //   0/0/0 도넛을 그려봐야 빈 원만 보이고 완주율도 계산할 수 없습니다.
+    if (stats.totalMarkets === 0) {
+      var row0 = block.querySelector('.profile-stats-row') || block;
+      var note = document.createElement('p');
+      note.id = 'chk-noshow-stat';   // 중복 삽입 방지 표시를 겸합니다
+      note.className = 'chk-empty-note';
+      note.textContent = '현장 참여 기록이 아직 없어요. 마켓이 끝나면 참여·노쇼가 집계돼요.';
+      (block.querySelector('.profile-stats-row') ? row0.parentNode : block)
+        .insertBefore(note, row0.nextSibling);
+      return;
+    }
 
     var row = statsRow(block);
     if (row) buildItems(stats).forEach(function (el) { row.appendChild(el); });

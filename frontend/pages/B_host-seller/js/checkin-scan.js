@@ -191,10 +191,27 @@
       return;
     }
 
-    if (!state.isToday) {
+    // [체크인 시작 가능 여부] 서버는 **개최 기간 안의 날짜만** 열어 줍니다.
+    //   화면 기본 날짜는 '오늘' 인데, 개최일이 아직 멀었으면 그 날짜로는 열 수 없습니다.
+    //   예전에는 "미리 열어 둘 수는 있어요" 라고 안내해 놓고 누르면 400 이 나서,
+    //   왜 안 되는지 알 수 없었습니다. 이제 이유와 할 일을 함께 알려 줍니다.
+    var inRange = (state.eventDates || []).indexOf(state.eventDate) >= 0;
+
+    if (!inRange) {
+      var range = (state.eventDates && state.eventDates.length)
+        ? state.eventDates[0] + ' ~ ' + state.eventDates[state.eventDates.length - 1]
+        : '';
+      els.start.disabled = true;
+      els.start.textContent = '체크인 시작';
+      banner('warn', '오늘(' + state.eventDate + ')은 이 마켓의 개최일이 아니에요. '
+        + (range ? '개최일은 ' + range + ' 예요. ' : '')
+        + '위 날짜 탭에서 개최일을 고르면 체크인을 열 수 있어요.');
+    } else if (!state.isToday) {
+      els.start.disabled = false;
       els.start.textContent = '이 날짜 체크인 미리 열기';
       banner('warn', '개최 당일이 아니에요. 미리 열어 둘 수는 있어요.');
     } else {
+      els.start.disabled = false;
       els.start.textContent = '체크인 시작';
       if (open) {
         banner('ok', '체크인 진행 중이에요. 판매자의 QR 을 찍어 주세요.');
@@ -222,7 +239,14 @@
       body: { marketId: state.marketId, eventDate: state.eventDate },
     });
     if (!res || !res.success) {
-      banner('error', (res && res.message) || '체크인을 시작하지 못했어요.');
+      // 서버가 이유를 코드로 알려줍니다. 그대로 보여주되 무엇을 하면 되는지 덧붙입니다.
+      var msg = (res && res.message) || '체크인을 시작하지 못했어요.';
+      if (res && res.code === 'DATE_OUT_OF_RANGE') {
+        msg += ' 위 날짜 탭에서 개최일을 골라 주세요.';
+      } else if (res && res.code === 'CHECKIN_TABLE_MISSING') {
+        msg += ' (backend 에서 migrate-add-checkin.js 실행이 필요해요)';
+      }
+      banner('error', msg);
       return;
     }
     await load();
@@ -308,6 +332,59 @@
     load();
   }
 
+  /* ---------------- 마켓 고르기 (marketId 가 없을 때) ---------------- */
+
+  /**
+   * 주소에 마켓 정보가 없어도 여기서 고르면 바로 이어집니다.
+   * 예전에는 "어느 마켓인지 알 수 없어요" 로 끝나서, 주소를 직접 고치지 않는 한
+   * 화면에서 할 수 있는 일이 없었습니다.
+   */
+  async function showMarketPicker() {
+    banner('warn', '어느 마켓의 체크인인지 골라 주세요.');
+    els.scheduleCard.hidden = true;
+    els.scanCard.hidden = true;
+    els.start.hidden = true;
+    els.close.hidden = true;
+
+    var res = await callApi('/markets/mine');
+    // 서버 오류 시 data 가 null 로 오고, 형태가 바뀌면 배열이 아닐 수도 있습니다.
+    // 배열인지 확인하지 않으면 .filter 에서 화면이 통째로 죽습니다.
+    var list = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+
+    if (!res || !res.success) {
+      els.roster.innerHTML = '';
+      els.rosterHint.textContent = '마켓 목록을 불러오지 못했어요. 「내 마켓 관리」에서 다시 들어와 주세요.';
+      return;
+    }
+
+    // 취소된 마켓(2)은 체크인할 일이 없으므로 뺍니다.
+    list = list.filter(function (m) { return Number(m.isExpired) !== 2; });
+
+    if (list.length === 0) {
+      els.roster.innerHTML = '';
+      els.rosterHint.textContent = '주최한 마켓이 없어요. 「마켓 등록하기」로 먼저 마켓을 만들어 주세요.';
+      return;
+    }
+
+    els.rosterHint.textContent = '마켓을 선택하면 체크인 화면으로 이어져요.';
+    els.roster.innerHTML = list.map(function (m) {
+      var min = String(m.eventDate_min || '').slice(0, 10);
+      var max = String(m.eventDate_max || '').slice(0, 10);
+      var when = min === max ? min : min + ' ~ ' + max;
+      return '<li><span class="chk-name chk-grow">' + escapeHtml(m.title) + '</span>'
+        + '<span class="chk-muted">' + escapeHtml(when) + '</span>'
+        + '<button type="button" class="btn btn-mustard btn-sm" data-pick="' + m.marketId + '">선택</button></li>';
+    }).join('');
+
+    els.roster.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-pick]');
+      if (!btn) return;
+      sessionStorage.setItem('checkinMarketId', btn.dataset.pick);
+      // 쿼리를 붙여 다시 열면, 새로고침해도 그 마켓이 유지됩니다.
+      window.location.search = '?marketId=' + btn.dataset.pick;
+    });
+  }
+
   /* ---------------- 체크인 시간 설정 ---------------- */
   //
   // 두 가지를 한 화면에서 다룹니다.
@@ -326,9 +403,55 @@
   }
 
   /** 개최 기간의 모든 날짜를 한 줄씩 그립니다. 아직 예약 안 된 날도 빈 칸으로 나옵니다. */
+  /**
+   * 아직 저장하지 않은 입력값을 기억해 둡니다.
+   *
+   *   6초마다 현황을 새로 불러오면서 이 목록을 innerHTML 로 통째로 다시 그립니다.
+   *   그러면 주최자가 방금 채워 넣은 시간이 **몇 초 뒤에 사라집니다.**
+   *   (「모든 날짜에 채우기」를 눌러 놓고 저장하기 전에 폴링이 돌면 전부 날아갑니다)
+   *
+   *   그리기 직전에 현재 입력값을 걷어 두고, 그린 뒤 다시 넣어 줍니다.
+   *   서버에 저장된 값(info)보다 사용자가 방금 친 값이 우선입니다.
+   */
+  function collectDayInputs() {
+    var draft = {};
+    els.dayRows.querySelectorAll('.chk-day-row').forEach(function (row) {
+      var date = row.dataset.date;
+      if (!date) return;
+      var start = row.querySelector('.row-start');
+      var end = row.querySelector('.row-end');
+      var lead = row.querySelector('.row-lead');
+      draft[date] = {
+        start: start ? start.value : '',
+        end: end ? end.value : '',
+        lead: lead ? lead.value : '',
+      };
+    });
+    return draft;
+  }
+
+  function restoreDayInputs(draft) {
+    if (!draft) return;
+    els.dayRows.querySelectorAll('.chk-day-row').forEach(function (row) {
+      var d = draft[row.dataset.date];
+      if (!d) return;
+      var start = row.querySelector('.row-start');
+      var end = row.querySelector('.row-end');
+      var lead = row.querySelector('.row-lead');
+      // 값이 있는 것만 되돌립니다. 비워 둔 칸까지 덮으면
+      // 서버에서 새로 내려온 예약 시간을 지우게 됩니다.
+      if (start && d.start) start.value = d.start;
+      if (end && d.end) end.value = d.end;
+      if (lead && d.lead) lead.value = d.lead;
+    });
+  }
+
   function renderDayRows() {
     var dates = state.eventDates || [];
     if (dates.length === 0) { els.dayRows.innerHTML = ''; return; }
+
+    // 다시 그리기 전에 저장 안 한 입력을 걷어 둡니다.
+    var draft = collectDayInputs();
 
     var byDate = {};
     (state.days || []).forEach(function (d) { byDate[d.eventDate] = d; });
@@ -363,6 +486,9 @@
         + '<span class="chk-day-note">' + note + '</span>'
         + '</div>';
     }).join('');
+
+    // 저장 안 한 입력을 되돌립니다. 이게 없으면 6초 뒤 폴링에 값이 사라집니다.
+    restoreDayInputs(draft);
   }
 
   /** 위쪽 일괄 칸의 값을 잠기지 않은 모든 줄에 채웁니다. (저장은 아직) */
@@ -547,6 +673,7 @@
       start: $('chk-start'),
       close: $('chk-close'),
       scanCard: $('chk-scan-card'),
+      scheduleCard: $('chk-schedule-card'),
       scanResult: $('chk-scan-result'),
       scanner: $('chk-scanner'),
       video: $('chk-video'),
@@ -568,14 +695,35 @@
       scheduleResult: $('chk-schedule-result'),
     };
 
+    // marketId 를 찾는 순서
+    //   ① 주소의 쿼리스트링
+    //   ② 버튼을 누를 때 저장해 둔 값
+    //      (이 프로젝트 개발 서버가 주소를 정리하면서 ?marketId=... 를 통째로
+    //       버리는 일이 있습니다. 그러면 화면은 열리는데 어느 마켓인지 모르게 됩니다)
+    //   ③ 그래도 없으면 내 마켓 목록을 띄워 고르게 합니다 — 막다른 오류로 끝내지 않습니다
     var params = new URLSearchParams(window.location.search);
     state.marketId = Number(params.get('marketId'));
     state.eventDate = params.get('eventDate') || todayStr();
 
     if (!state.marketId) {
-      banner('error', '어느 마켓인지 알 수 없어요. 「내 마켓 관리」에서 다시 들어와 주세요.');
+      var saved = Number(sessionStorage.getItem('checkinMarketId'));
+      if (saved) {
+        state.marketId = saved;
+        // 새로고침해도 유지되도록 주소를 되살립니다. (기록을 덧쌓지 않게 replaceState)
+        try {
+          var u = new URL(window.location.href);
+          u.searchParams.set('marketId', String(saved));
+          window.history.replaceState(null, '', u.toString());
+        } catch (e) { /* 주소 갱신 실패는 무시 — 동작에는 지장 없습니다 */ }
+      }
+    }
+
+    if (!state.marketId) {
+      await showMarketPicker();
       return;
     }
+
+    sessionStorage.setItem('checkinMarketId', String(state.marketId));
 
     if (typeof ensureSession === 'function') {
       var okSession = await ensureSession(true);

@@ -173,3 +173,10 @@
 
 /* 중도 이탈 조각 */
 .chk-donut-legend .dot.warn { background: #E0912F; }
+
+/* 참여 기록이 아직 없을 때 안내 */
+.chk-empty-note {
+  color: #6b5a4a; font-size: .84rem; line-height: 1.6;
+  margin: 8px 0 0; padding: 8px 10px;
+  background: #f1ece2; border-radius: 8px;
+}

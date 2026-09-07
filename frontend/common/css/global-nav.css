@@ -405,3 +405,11 @@ body.gnav-ready .auth-brand {
     font-size: 13px;
   }
 }
+
+/* [알림 내역] 종 버튼 아래 전체 보기 */
+.gnav-notify-more {
+  display: block; text-align: center; padding: 10px;
+  border-top: 1px solid #d9cdb8; background: #f6efe2;
+  font-size: .86rem; font-weight: 600; color: #2A1C12; text-decoration: none;
+}
+.gnav-notify-more:hover { background: #ece3d3; }

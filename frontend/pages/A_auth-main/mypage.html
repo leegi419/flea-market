@@ -10,7 +10,9 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap"
         rel="stylesheet" />
-    <link rel="stylesheet" href="../../common/css/style.css" />
+    <link rel="stylesheet" href="../../common/css/style.css?v=5" />
+    <!-- [현장 참여 기록] 노쇼 배지·도넛 스타일 -->
+    <link rel="stylesheet" href="../../common/css/checkin.css?v=6" />
     <!-- [정산/결제 내역] -->
     <link rel="stylesheet" href="../../common/css/settlement.css?v=1" />
     <!-- 페이지 폭이 넓은 .page-wrap/.nav/.panel 레이아웃은 B_host-seller 쪽에 이미 있어 그대로 가져다 씁니다. -->
@@ -19,10 +21,10 @@
     <link rel="stylesheet" href="css/profile.css?v=5" />
     <link rel="stylesheet" href="css/payment-history.css?v=3" />
     <!-- [C-01/C-02] 역할별 화면 분기 · 주최자 역할 전환 버튼 -->
-    <script src="../../common/js/role-routing.js?v=3"></script>
+    <script src="../../common/js/role-routing.js?v=5"></script>
     <!-- [공통] 상단 고정 네비게이션 바 (모든 화면 공통) -->
-    <link rel="stylesheet" href="../../common/css/global-nav.css?v=2" />
-    <script src="../../common/js/global-nav.js?v=2" defer></script>
+    <link rel="stylesheet" href="../../common/css/global-nav.css?v=4" />
+    <script src="../../common/js/global-nav.js?v=5" defer></script>
 </head>
 
 <body class="profile-body">
@@ -48,6 +50,9 @@
                          mypage.js 의 탭 전환 로직을 건드리지 않으려고 버튼이 아닌 링크로 뒀습니다. -->
                     <a class="mypage-tab-btn" href="notification-settings.html"
                        style="display:block; text-align:left; text-decoration:none;">알림 설정</a>
+                    <!-- [로그인 기기] 내 계정에 접속 중인 기기 확인 (조회 전용) -->
+                    <a class="mypage-tab-btn" href="login-devices.html"
+                       style="display:block; text-align:left; text-decoration:none;">로그인 기기</a>
                 </div>
 
                 <div class="edit-panels" id="profile-panel">
@@ -285,7 +290,7 @@
     <script src="../../common/js/validators.js?v=2"></script>
     <script src="js/mypage.js?v=7"></script>
     <!-- [현장 QR 체크인] 프로필에 노쇼 지표 추가 (기존 스크립트는 건드리지 않습니다) -->
-    <script src="../../common/js/no-show-badge.js?v=4"></script>
+    <script src="../../common/js/no-show-badge.js?v=5"></script>
     <script src="../B_host-seller/js/payment.js?v=9"></script>
     <!-- [UI 통일] 내 정보 수정(profile-edit.html) 로직을 같은 화면에 내장했습니다. -->
     <script src="js/profile-edit.js?v=5"></script>

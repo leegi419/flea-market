@@ -67,3 +67,51 @@
 
 .ns-actions { display: flex; align-items: center; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
 .ns-hint { color: #6b5a4a; font-size: .85rem; }
+
+/* ── 가입 직후 온보딩 ─────────────────────────────────── */
+.ns-step {
+  display: inline-block; background: #2A1C12; color: #FBF6EC;
+  border-radius: 999px; padding: 3px 12px; font-size: .78rem;
+  font-weight: 700; margin: 0 0 8px;
+}
+.onb-actions { justify-content: space-between; }
+.onb-actions .btn { min-width: 120px; }
+
+/* 역할 구분 배지 — 두 창을 헷갈리지 않게 */
+.ns-role-badge {
+  display: inline-block; border-radius: 999px; padding: 3px 12px;
+  font-size: .8rem; font-weight: 700; margin-left: 8px;
+}
+.ns-role-badge.host   { background: #E0912F; color: #2A1C12; }
+.ns-role-badge.seller { background: #2f8f4e; color: #fff; }
+
+/* 마이페이지에서 두 역할을 한 화면에 둘 때의 구분선 */
+.ns-section {
+  font-size: .95rem; margin: 16px 0 4px; padding-left: 10px;
+  border-left: 5px solid #d9cdb8;
+}
+.ns-section:first-child { margin-top: 0; }
+.ns-section.host   { border-left-color: #E0912F; }
+.ns-section.seller { border-left-color: #2f8f4e; }
+
+/* ── 지역 선택 (전국 17개 시·도) ──────────────────────── */
+.ns-region-bulk {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.ns-region-bulk button {
+  border: 1px solid #b9a894; background: #fff; border-radius: 8px;
+  padding: 4px 10px; font-size: .8rem; cursor: pointer; font-family: inherit;
+}
+.ns-region-bulk button:hover { background: #f1ece2; }
+.ns-region-picked { font-size: .8rem; color: #6b5a4a; margin-left: auto; }
+
+/* 17개가 되니 한 줄에 여러 개가 고르게 들어가도록 */
+.ns-regions {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px;
+}
+.ns-regions .ns-region { width: 100%; text-align: center; padding: 6px 4px; }
+
+@media (max-width: 400px) {
+  .ns-regions { grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); }
+  .ns-region-picked { margin-left: 0; width: 100%; }
+}

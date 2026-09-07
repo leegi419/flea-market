@@ -11,11 +11,15 @@
 //   두 화면이 이 파일 하나를 같이 쓰게 해서 한쪽만 바뀌는 일을 막습니다.
 //
 // 이름 규칙
-//   주최자가 이름을 직접 입력하지 않습니다. 순서대로 A, B, C 로 자동으로 붙습니다.
+//   주최자가 이름을 직접 입력하지 않습니다. 순서대로 스탠다드 → 프리미엄 → 스페셜 로 자동으로 붙습니다.
+//   첫 번째(스탠다드)가 그 마켓의 대표 가격이 되어 목록 카드에 표시됩니다.
 //   서버(utills/boothTypes.js)도 같은 규칙으로 다시 매기므로, 화면과 DB 표기가 항상 같습니다.
 
 (function () {
-  const LABELS = ['A', 'B', 'C'];
+  // 서버(utills/boothTypes.js)의 BOOTH_TYPE_LABELS 와 같은 순서여야 합니다.
+  // 어긋나면 화면에 보이는 이름과 저장되는 이름이 달라집니다.
+  const LABELS = ['스탠다드', '프리미엄', '스페셜'];
+  const TONES = ['standard', 'premium', 'special'];
   const MAX = LABELS.length;
 
   /* ============================================================
@@ -72,17 +76,17 @@
     return `
       <div class="booth-type-row-wrap${locked ? ' is-locked-row' : ''}${stopped ? ' is-stopped' : ''}" data-index="${index}">
         <div class="booth-type-row" data-index="${index}">
-          <span class="booth-type-label">부스 ${labelOf(index)}${stopped ? ' <em>(중단)</em>' : ''}</span>
+          <span class="booth-type-label tone-${TONES[index] || 'standard'}">${labelOf(index)}${stopped ? ' <em>(중단)</em>' : ''}</span>
           <div class="booth-type-price-wrap">
             <input type="number" class="form-input booth-type-price" min="0" step="100"
                    placeholder="0" value="${row.price ?? ''}"
-                   aria-label="부스 ${labelOf(index)} 가격" />
+                   aria-label="${labelOf(index)} 등급 가격" />
             <span class="booth-type-unit">원</span>
           </div>
           <div class="booth-type-cap-wrap">
             <input type="number" class="form-input booth-type-capacity" min="0" step="1"
                    placeholder="0" value="${row.capacity ?? ''}"
-                   aria-label="부스 ${labelOf(index)} 수량" />
+                   aria-label="${labelOf(index)} 등급 수량" />
             <span class="booth-type-unit">칸</span>
           </div>
           ${tail}
@@ -97,41 +101,61 @@
    *   저장 버튼을 눌러야만 알 수 있으면, 주최자는 11칸을 다 입력하고 나서야
    *   총 정원이 10이라는 걸 알게 됩니다. 입력하는 동안 바로 보이게 합니다.
    */
+  /**
+   * [총 부스 수] 등급을 쓰면 총 부스 수는 **등급 칸 수의 합**입니다.
+   *
+   *   예전에는 「허용 가능한 최대 부스 수」를 따로 입력받았습니다.
+   *   그런데 서버에서 두 검사가 독립적으로 걸려서 이렇게 됐습니다.
+   *     총 8 / 등급 합계 6 → 6칸에서 막힘 (총 부스 수는 아무 역할 없음)
+   *     총 3 / 등급 합계 6 → 3칸에서 막힘 (등급 칸이 남았는데 차단)
+   *   크면 무의미하고 작으면 방해만 됩니다.
+   *
+   *   그래서 등급을 쓰면 입력칸을 숨기고 합계를 그대로 씁니다.
+   *   서버도 저장할 때 같은 규칙으로 맞춥니다. (marketController)
+   */
   function syncCapacitySummary() {
     if (!editor.rootEl) return;
 
     const box = document.getElementById('booth-type-capacity-summary');
-    if (!box) return;
-
     const totalEl = document.getElementById('max-participants');
-    const total = Number(totalEl?.value);
+    const totalField = totalEl ? totalEl.closest('.form-field') : null;
+
     const rows = editor.rows.filter((r) => String(r.price ?? '').trim() !== '');
+    const usingTypes = rows.length > 0;
+
+    // 칸 수를 안 정한 등급이 하나라도 있으면 전체가 "제한 없음" 입니다.
+    // 합만 더하면 그 등급을 0칸으로 세어 실제보다 적은 상한이 걸립니다.
+    const hasUnlimited = rows.some((r) => (Number(r.capacity) || 0) <= 0);
     const sum = rows.reduce((acc, r) => acc + (Number(r.capacity) || 0), 0);
 
-    // 수량을 하나도 안 정했으면 비교할 게 없습니다.
-    if (sum <= 0) {
+    if (totalField) {
+      // 등급을 쓰면 총 부스 수 칸을 숨깁니다. 두 값이 어긋날 일이 없어집니다.
+      totalField.hidden = usingTypes;
+      if (totalEl) {
+        // required 인 채로 숨기면 폼 제출이 조용히 막힙니다. 함께 풀어줍니다.
+        if (usingTypes) totalEl.removeAttribute('required');
+        else totalEl.setAttribute('required', '');
+        // 서버가 다시 계산하지만, 화면 값도 맞춰두면 다른 코드가 읽어도 어긋나지 않습니다.
+        if (usingTypes) totalEl.value = hasUnlimited ? 0 : sum;
+      }
+    }
+
+    if (!box) return;
+
+    if (!usingTypes) {
       box.className = 'booth-cap-summary';
-      box.textContent = '종류별 수량을 비워두면 개수 제한 없이 받아요. (총 부스 수 규칙은 그대로 적용돼요)';
+      box.textContent = '';
       return;
     }
 
-    if (!Number.isFinite(total) || total <= 0) {
+    if (hasUnlimited) {
       box.className = 'booth-cap-summary';
-      box.textContent = `종류별 수량 합계 ${sum}칸 · 총 부스 수는 제한 없음`;
+      box.textContent = '칸 수를 비워둔 등급이 있어 부스를 개수 제한 없이 받아요.';
       return;
     }
 
-    if (sum > total) {
-      box.className = 'booth-cap-summary over';
-      box.textContent = `종류별 수량 합계 ${sum}칸이 총 부스 수 ${total}칸보다 ${sum - total}칸 많아요. `
-        + '이대로는 저장할 수 없어요. 총 부스 수를 늘리거나 종류별 수량을 줄여주세요.';
-      return;
-    }
-
-    const left = total - sum;
     box.className = 'booth-cap-summary ok';
-    box.textContent = `종류별 수량 합계 ${sum}칸 / 총 부스 수 ${total}칸`
-      + (left > 0 ? ` · ${left}칸은 종류를 안 정한 신청에 쓸 수 있어요.` : ' · 딱 맞아요.');
+    box.textContent = `총 부스 수 ${sum}칸 (등급 합계로 자동 계산돼요)`;
   }
 
   function syncBasePrice() {
@@ -148,7 +172,7 @@
       editor.priceInputEl.classList.add('is-locked');
       if (editor.priceHintEl) {
         editor.priceHintEl.textContent =
-          '부스 종류를 쓰는 마켓이라 기본 부스료는 부스 A의 가격으로 자동 설정됩니다.';
+          '부스 등급을 쓰는 마켓이라 기본 부스료는 첫 번째 등급(스탠다드) 가격으로 자동 설정됩니다.';
       }
     } else {
       editor.priceInputEl.readOnly = false;
@@ -228,7 +252,7 @@
     editor.priceInputEl = opts.priceInputId ? document.getElementById(opts.priceInputId) : null;
     editor.priceHintEl = opts.priceHintId ? document.getElementById(opts.priceHintId) : null;
 
-    // 처음에는 부스 A 한 줄로 시작합니다.
+    // 처음에는 스탠다드 한 줄로 시작합니다.
     if (editor.rows.length === 0) editor.rows = [{ boothTypeId: null, price: '', capacity: '', isActive: true, applicationCount: 0 }];
 
     editor.addBtnEl?.addEventListener('click', (e) => { e.preventDefault(); addRow(); });
@@ -309,23 +333,17 @@
     for (let i = 0; i < list.length; i += 1) {
       const p = list[i].price;
       if (!Number.isInteger(p) || p < 0) {
-        return `부스 ${labelOf(i)}의 가격은 0 이상의 정수로 입력해주세요.`;
+        return `${labelOf(i)} 등급의 가격은 0 이상의 정수로 입력해주세요.`;
       }
       const c = list[i].capacity;
       if (!Number.isInteger(c) || c < 0) {
-        return `부스 ${labelOf(i)}의 수량은 0 이상의 정수로 입력해주세요. (비워두면 제한 없음)`;
+        return `${labelOf(i)} 등급의 수량은 0 이상의 정수로 입력해주세요. (비워두면 제한 없음)`;
       }
     }
 
-    // 종류별 수량 합계가 총 정원을 넘으면 앞뒤가 안 맞습니다.
-    //   총 정원이 먼저 차서 남은 종류는 신청을 못 받게 되므로 미리 알려줍니다.
-    const totalEl = document.getElementById('max-participants');
-    const total = Number(totalEl?.value);
-    const sum = list.reduce((acc, t) => acc + (t.capacity || 0), 0);
-    if (Number.isFinite(total) && total > 0 && sum > 0 && sum > total) {
-      return `부스 종류별 수량 합계(${sum}칸)가 「허용 가능한 최대 부스 수」(${total}칸)보다 많아요. `
-        + '총 부스 수를 늘리거나 종류별 수량을 줄여주세요.';
-    }
+    // [제거됨] 예전에는 "종류별 합계가 총 부스 수를 넘는다" 는 검사가 있었습니다.
+    //   이제 총 부스 수를 따로 입력받지 않고 등급 합계로 자동 계산하므로
+    //   두 값이 어긋날 수가 없습니다. 검사할 대상 자체가 사라졌습니다.
     return null;
   }
 
@@ -424,7 +442,7 @@
       // 마감된 종류는 고를 수 없게 막습니다. 서버도 BOOTH_TYPE_FULL 로 다시 막습니다.
       const left = cap > 0 ? ` · ${full ? '마감' : `${cap - applied}칸 남음`}` : '';
       return `<option value="${t.boothTypeId}" data-price="${t.price}"${sel}${full ? ' disabled' : ''}>`
-        + `부스 ${t.name} — ${won(t.price)}${left}</option>`;
+        + `${t.name} — ${won(t.price)}${left}</option>`;
     }).join('');
   }
 

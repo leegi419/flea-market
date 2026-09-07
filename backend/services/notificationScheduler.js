@@ -25,6 +25,7 @@ import pool from '../config/db.js';
 import { createNotification } from './notificationService.js';
 import { LEAD_HOURS_DEFAULT, NOTIFY_HOUR_DEFAULT } from '../utills/notificationSettings.js';
 import { findUnnotifiedAbsences } from '../utills/checkinStats.js';
+import { RETENTION_DAYS } from '../controllers/notificationController.js';
 
 /** 검사 주기(분). 짧을수록 정확하지만 DB 를 자주 두드립니다. */
 const INTERVAL_MINUTES = 5;
@@ -83,7 +84,7 @@ async function notifyRecruitClosing() {
     const [users] = await pool.query(
       `SELECT u.userId
          FROM users u
-         LEFT JOIN notification_settings s ON s.userId = u.userId AND s.category = 'deadline'
+         LEFT JOIN notification_settings s ON s.userId = u.userId AND s.category = 'seller_deadline'
         WHERE (s.enabled IS NULL OR s.enabled = 1)
           AND NOT EXISTS (
                 SELECT 1 FROM applications a
@@ -125,7 +126,7 @@ async function notifyPaymentDue() {
             COALESCE(s.leadHours, ?) AS leadHours
        FROM applications a
        JOIN markets m ON m.marketId = a.marketId
-       LEFT JOIN notification_settings s ON s.userId = a.sellerId AND s.category = 'deadline'
+       LEFT JOIN notification_settings s ON s.userId = a.sellerId AND s.category = 'seller_deadline'
       WHERE a.status = 'Approved'
         AND a.paymentDueAt IS NOT NULL
         AND a.paymentDueAt > NOW()
@@ -179,7 +180,7 @@ async function notifyAbsences() {
   try {
     const [prefs] = await pool.query(
       `SELECT userId, notifyHour FROM notification_settings
-        WHERE category = 'attendance' AND userId IN (${sellerIds.map(() => '?').join(', ')})`,
+        WHERE category = 'seller_attendance' AND userId IN (${sellerIds.map(() => '?').join(', ')})`,
       sellerIds
     );
     for (const p of prefs) hourBySeller.set(Number(p.userId), Number(p.notifyHour));
@@ -226,6 +227,77 @@ async function notifyAbsences() {
 }
 
 /* ------------------------------------------------------------------ */
+/* 4) 오래된 알림 정리 — 보관 기간이 지난 것 삭제                      */
+/* ------------------------------------------------------------------ */
+
+/** 마지막으로 정리를 마친 날. 5분마다 지울 이유가 없어 하루에 한 번만 돕니다. */
+let lastCleanupDay = null;
+
+/**
+ * 보관 기간(기본 7일)이 지난 알림을 지웁니다.
+ *
+ * 왜 지우는가
+ *   지금까지 알림을 지우는 코드가 어디에도 없었습니다.
+ *   활발한 주최자면 1년에 수천 건이 쌓이고, 히스토리 화면을 만들면 그게 다 보입니다.
+ *   한 달 전 "댓글이 달렸어요" 는 아무도 다시 보지 않습니다.
+ *
+ * 왜 안 읽은 것도 지우나
+ *   읽음 여부로 남기면, 알림을 안 보는 사람의 데이터만 계속 쌓입니다.
+ *   정리가 필요한 바로 그 계정이 정리에서 빠지는 셈이라 앞뒤가 맞지 않습니다.
+ *   대신 기간을 넉넉히(7일) 두고, 화면에도 보관 기간을 적어 둡니다.
+ *
+ * 왜 한 번에 다 지우지 않고 나눠 지우나
+ *   DELETE 한 방으로 수만 건을 지우면 그동안 테이블이 잠겨,
+ *   그 시간 동안 알림 조회와 생성이 함께 멈춥니다.
+ *   그래서 한 번에 CLEANUP_BATCH 건씩 끊어 지우고 사이를 잠깐 비웁니다.
+ *   **한 번의 실행 안에서 다 지울 때까지 반복**하므로, 다음 날까지 미뤄지지 않습니다.
+ *
+ *   무한 반복을 막으려고 상한을 둡니다. 상한에 걸리면 그날 표시를 남기지 않아
+ *   다음 주기(5분 뒤)에 이어서 지웁니다.
+ */
+const CLEANUP_BATCH = 2000;
+/** 한 번의 실행에서 최대 몇 번까지 반복할지 (2000 × 50 = 10만 건) */
+const CLEANUP_MAX_ROUNDS = 50;
+
+async function cleanupOldNotifications() {
+  const today = new Date().toDateString();
+  if (lastCleanupDay === today) return 0;
+
+  let removed = 0;
+
+  try {
+    for (let round = 0; round < CLEANUP_MAX_ROUNDS; round += 1) {
+      const [r] = await pool.query(
+        `DELETE FROM notifications
+          WHERE createdAt < DATE_SUB(NOW(), INTERVAL ? DAY)
+          LIMIT ?`,
+        [RETENTION_DAYS, CLEANUP_BATCH]
+      );
+      removed += r.affectedRows;
+
+      // 배치가 덜 찼으면 지울 게 더 없다는 뜻입니다. 오늘 몫 끝.
+      if (r.affectedRows < CLEANUP_BATCH) {
+        lastCleanupDay = today;
+        break;
+      }
+      // 다음 배치 전에 잠깐 비웁니다. 연속으로 붙이면 다른 쿼리가 밀립니다.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    if (removed > 0) {
+      const done = lastCleanupDay === today;
+      console.log(`🧹 오래된 알림 ${removed}건 정리 (보관 ${RETENTION_DAYS}일)`
+        + (done ? '' : ' — 아직 남아 있어 다음 주기에 이어서 지웁니다'));
+    }
+    return removed;
+  } catch (error) {
+    if (isMissingTable(error)) return removed;
+    console.error('[알림정리] 실패(다음 주기에 재시도):', error.message);
+    return removed;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 
 /** 한 번 검사합니다. 스케줄러 없이 수동으로 부를 수도 있습니다. */
 export async function runNotificationChecks() {
@@ -233,6 +305,7 @@ export async function runNotificationChecks() {
     const recruit = await notifyRecruitClosing();
     const payment = await notifyPaymentDue();
     const absence = await notifyAbsences();
+    await cleanupOldNotifications();
     if (recruit + payment + absence > 0) {
       console.log(`🔔 예약 알림 발송: 모집마감 ${recruit}건 / 결제마감 ${payment}건 / 미참여 ${absence}건`);
     }

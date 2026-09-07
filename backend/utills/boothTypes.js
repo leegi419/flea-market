@@ -31,14 +31,40 @@ export const MAX_BOOTH_TYPES = 3;
  * 이름을 자유 입력으로 두면 마켓마다 표기가 제각각이 되고, 판매자가 고를 때
  * 무엇이 상위 등급인지 알기 어려워집니다. A/B/C 로 고정하면 화면 어디서든 같게 보입니다.
  */
-export const BOOTH_TYPE_LABELS = ['A', 'B', 'C'];
+/**
+ * 부스 등급 이름.
+ *
+ *   'A' / 'B' / 'C' 대신 등급으로 부릅니다.
+ *   판매자가 신청 화면에서 고를 때 A·B·C 는 무엇이 더 좋은지 알 수 없어
+ *   결국 가격만 보고 고르게 됩니다. 이름 자체가 급을 말해주는 편이 낫습니다.
+ *
+ *   순서는 **기본 → 상위** 입니다. 스탠다드가 기준이고 위로 올라갑니다.
+ *   ('베이직' 을 두지 않은 이유 — 기본 등급이 제일 싼 것처럼 읽혀서
+ *    대표 가격이 최저가로 보입니다)
+ *
+ *   **첫 번째(스탠다드)가 그 마켓의 대표 가격**입니다.
+ *   목록 카드에 금액을 한 줄만 보여줄 수 있는데, 무엇을 쓸지 정해두지 않으면
+ *   화면마다 다른 값이 나옵니다. 이름이 아니라 순서로 정하는 이유는,
+ *   주최자가 등급을 2개만 만들어도 대표가 반드시 하나 정해지기 때문입니다.
+ */
+export const BOOTH_TYPE_LABELS = ['스탠다드', '프리미엄', '스페셜'];
 
-/** 순서(0부터)에 해당하는 부스 이름을 돌려줍니다. 범위를 벗어나면 null. */
+/** 등급별 색상 힌트. 프론트가 배지·게이지 색을 맞추는 데 씁니다. */
+export const BOOTH_TYPE_TONES = ['standard', 'premium', 'special'];
+
+/** 대표 가격으로 쓸 등급의 위치 (0 = 첫 번째 = 스탠다드) */
+export const PRIMARY_TYPE_INDEX = 0;
+
+/** 등급 위치(0,1,2)에 대응하는 이름. 범위를 벗어나도 안전한 값을 돌려줍니다. */
 export function boothTypeLabel(index) {
-  return BOOTH_TYPE_LABELS[index] ?? null;
+  return BOOTH_TYPE_LABELS[index] || `등급${index + 1}`;
 }
 
-/** 부스 종류 이름 길이 상한 (자동 부여라 사실상 1글자지만 컬럼 상한과 맞춰 둡니다) */
+/** 등급 위치에 대응하는 색상 힌트 (프론트 배지·게이지용) */
+export function boothTypeTone(index) {
+  return BOOTH_TYPE_TONES[index] || 'basic';
+}
+
 export const BOOTH_TYPE_NAME_MAX = 30;
 
 /** 부스를 점유하고 있다고 보는 신청 상태 (applicationPolicy 와 동일) */
@@ -270,6 +296,52 @@ export async function countApplicationsByType(db, marketId) {
   return new Map(rows.map((r) => [Number(r.boothTypeId), Number(r.cnt)]));
 }
 
+/**
+ * [총 부스 수] 등급을 쓰는 마켓의 총 정원은 **등급 칸 수의 합**입니다.
+ *
+ * ── 왜 따로 입력받지 않나 ────────────────────────────────────────
+ *   예전에는 「허용 가능한 최대 부스 수」와 등급별 칸 수를 따로 받았습니다.
+ *   그런데 두 검사가 독립적으로 걸려서, 실측해 보면 이렇게 됩니다.
+ *
+ *     총 정원 8 / 등급 합계 6 → 6건에서 막힘 (총 정원은 아무 역할 없음)
+ *     총 정원 3 / 등급 합계 6 → 3건에서 막힘 (등급 칸이 남았는데 차단)
+ *
+ *   크면 무의미하고 작으면 방해만 됩니다. 주최자는 어느 쪽이 진짜인지 알 수 없습니다.
+ *   그래서 등급을 쓰면 합계를 그대로 총 정원으로 삼습니다.
+ *
+ * ── 칸 수를 안 정한 등급이 있으면 ─────────────────────────────────
+ *   그 등급은 "제한 없음" 이라는 뜻이므로 총합도 무제한(0)이 되어야 합니다.
+ *   합만 더하면 그 등급을 0칸으로 세어 실제보다 적은 상한이 걸립니다.
+ *
+ * @returns {number} 총 부스 수. 0 이면 제한 없음.
+ */
+export function totalCapacityOf(list) {
+  if (!Array.isArray(list) || list.length === 0) return 0;
+  let sum = 0;
+  for (const t of list) {
+    const cap = Number(t.capacity) || 0;
+    if (cap <= 0) return 0;   // 하나라도 무제한이면 전체가 무제한
+    sum += cap;
+  }
+  return sum;
+}
+
+/** 해당 컬럼이 있는지 확인합니다. (대소문자 무시 — 팀마다 표기가 다를 수 있습니다) */
+async function hasColumn(db, column) {
+  try {
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS c FROM information_schema.columns
+        WHERE table_schema = DATABASE()
+          AND LOWER(table_name) = 'market_booth_types'
+          AND LOWER(column_name) = LOWER(?)`,
+      [column]
+    );
+    return Number(rows[0].c) > 0;
+  } catch {
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* 저장                                                                */
 /* ------------------------------------------------------------------ */
@@ -292,10 +364,16 @@ export async function saveBoothTypes(db, marketId, list) {
   if (!table) return { ok: true, saved: 0, stopped: [], removed: 0, skipped: true };
   const schemaHasCapacity = capacityColumn;
 
+  // 가격 이력 컬럼이 있는 DB 에서만 원가/직전가를 다룹니다. (마이그레이션 미실행 대비)
+  const hasPriceHistory = await hasColumn(db, 'priceOrigin') && await hasColumn(db, 'pricePrev');
+
   const [existing] = await db.query(
-    `SELECT boothTypeId, name FROM market_booth_types WHERE marketId = ?`,
+    `SELECT boothTypeId, name, price${hasPriceHistory ? ', priceOrigin, pricePrev' : ''}
+       FROM market_booth_types WHERE marketId = ?`,
     [marketId]
   );
+  const priceById = new Map(existing.map((r) => [Number(r.boothTypeId), Number(r.price) || 0]));
+  const originById = new Map(existing.map((r) => [Number(r.boothTypeId), r.priceOrigin]));
   // 종류별 신청 건수 — 삭제 가능 여부와 이름 고정 여부를 여기서 판단합니다.
   //   이미 신청이 들어온 종류는 이름을 바꾸지 않습니다.
   //   A/B/C 는 순서대로 매겨지므로, 앞의 것을 지우면 뒤 종류의 이름이 밀려서 바뀝니다.
@@ -338,21 +416,44 @@ export async function saveBoothTypes(db, marketId, list) {
       // capacity 컬럼이 없는 DB 에서는 그 항목만 빼고 저장합니다. (마이그레이션 미실행 대비)
       const capSet = schemaHasCapacity ? ', capacity = ?' : '';
       const capVal = schemaHasCapacity ? [item.capacity ?? 0] : [];
+
+      // [가격 이력] 금액이 실제로 달라졌을 때만 직전가를 갱신합니다.
+      //   이름만 고쳐도 직전가가 덮이면 "얼마에서 얼마로 바뀌었는지" 를 잃습니다.
+      //   원가(priceOrigin)는 비어 있을 때만 채웁니다 — 한 번 정해지면 바뀌지 않아야
+      //   "처음 대비" 비교가 의미를 갖습니다.
+      const before = priceById.get(item.boothTypeId);
+      const changed = before !== undefined && Number(item.price) !== before;
+      let priceSet = '';
+      let priceVal = [];
+      if (hasPriceHistory) {
+        if (changed) { priceSet += ', pricePrev = ?'; priceVal.push(before); }
+        if (originById.get(item.boothTypeId) == null) {
+          // 원가 기록이 없던 등급이면, 바뀌기 전 금액을 원가로 삼습니다.
+          priceSet += ', priceOrigin = ?';
+          priceVal.push(before ?? item.price);
+        }
+      }
+
       await db.query(
         `UPDATE market_booth_types
-            SET name = ?, price = ?, sortOrder = ?, isActive = ?${capSet}
+            SET name = ?, price = ?, sortOrder = ?, isActive = ?${capSet}${priceSet}
           WHERE boothTypeId = ? AND marketId = ?`,
-        [keepName, item.price, item.sortOrder, item.isActive ?? 1, ...capVal, item.boothTypeId, marketId]
+        [keepName, item.price, item.sortOrder, item.isActive ?? 1, ...capVal, ...priceVal,
+         item.boothTypeId, marketId]
       );
       keepIds.add(item.boothTypeId);
     } else {
       const capCol = schemaHasCapacity ? ', capacity' : '';
       const capPh = schemaHasCapacity ? ', ?' : '';
       const capVal = schemaHasCapacity ? [item.capacity ?? 0] : [];
+      // 새 등급은 지금 금액이 곧 원가입니다.
+      const oriCol = hasPriceHistory ? ', priceOrigin' : '';
+      const oriPh = hasPriceHistory ? ', ?' : '';
+      const oriVal = hasPriceHistory ? [item.price] : [];
       const [result] = await db.query(
-        `INSERT INTO market_booth_types (marketId, name, price, sortOrder, isActive${capCol})
-         VALUES (?, ?, ?, ?, ?${capPh})`,
-        [marketId, item.name, item.price, item.sortOrder, item.isActive ?? 1, ...capVal]
+        `INSERT INTO market_booth_types (marketId, name, price, sortOrder, isActive${capCol}${oriCol})
+         VALUES (?, ?, ?, ?, ?${capPh}${oriPh})`,
+        [marketId, item.name, item.price, item.sortOrder, item.isActive ?? 1, ...capVal, ...oriVal]
       );
       keepIds.add(Number(result.insertId));
     }
@@ -412,8 +513,11 @@ export async function attachBoothTypes(db, rows, { includeInactive = false } = {
   const activeSql = includeInactive ? '' : ' AND isActive = 1';
   const { capacityColumn } = await getBoothTypeReadiness(db);
   const capSelect = capacityColumn ? ', capacity' : ', 0 AS capacity';
+  // 가격 이력 컬럼이 없는 DB 에서도 화면이 깨지지 않게 NULL 로 채웁니다.
+  const hasHistory = await hasColumn(db, 'priceOrigin') && await hasColumn(db, 'pricePrev');
+  const histSelect = hasHistory ? ', priceOrigin, pricePrev' : ', NULL AS priceOrigin, NULL AS pricePrev';
   const [types] = await db.query(
-    `SELECT boothTypeId, marketId, name, price, sortOrder, isActive${capSelect}
+    `SELECT boothTypeId, marketId, name, price, sortOrder, isActive${capSelect}${histSelect}
        FROM market_booth_types
       WHERE marketId IN (${ids.map(() => '?').join(', ')})${activeSql}
       ORDER BY marketId, sortOrder, boothTypeId`,
@@ -441,20 +545,44 @@ export async function attachBoothTypes(db, rows, { includeInactive = false } = {
   for (const t of types) {
     const key = Number(t.marketId);
     if (!byMarket.has(key)) byMarket.set(key, []);
+    const price = Number(t.price);
+    const origin = t.priceOrigin == null ? null : Number(t.priceOrigin);
+    const prev = t.pricePrev == null ? null : Number(t.pricePrev);
+
     byMarket.get(key).push({
       boothTypeId: Number(t.boothTypeId),
       name: t.name,
-      price: Number(t.price),
+      price,
       sortOrder: Number(t.sortOrder),
       isActive: Number(t.isActive) === 1,
       // [종류별 정원] 0 이면 이 종류는 제한 없음.
       capacity: Number(t.capacity) || 0,
       // 신청 건수. 0 이어야 삭제할 수 있고, 화면 게이지의 분자로도 씁니다.
       applicationCount: counts.get(Number(t.boothTypeId)) || 0,
+      // [가격 이력] 화면이 직접 빼기를 하지 않도록 서버에서 계산해 내려줍니다.
+      //   화면마다 계산하면 값이 갈립니다.
+      priceOrigin: origin,
+      pricePrev: prev,
+      diffFromOrigin: origin == null ? 0 : price - origin,   // 처음 대비
+      diffFromPrev: prev == null ? 0 : price - prev,         // 직전 대비
     });
   }
 
-  for (const r of rows) r.boothTypes = byMarket.get(Number(r.marketId)) || [];
+  for (const r of rows) {
+    const list = byMarket.get(Number(r.marketId)) || [];
+    r.boothTypes = list;
+
+    // [대표 가격] 목록 카드에는 금액을 한 줄만 보여줄 수 있습니다.
+    //   무엇을 쓸지 정해두지 않으면 화면마다 다른 값이 나오므로,
+    //   첫 번째 등급(프리미엄)을 대표로 삼습니다. sortOrder 순으로 정렬돼 있습니다.
+    //   등급을 안 쓰는 마켓이면 null 이고, 화면은 기존 markets.boothPrice 를 씁니다.
+    const primary = list[PRIMARY_TYPE_INDEX] || null;
+    r.primaryBoothType = primary
+      ? { boothTypeId: primary.boothTypeId, name: primary.name, price: primary.price,
+          priceOrigin: primary.priceOrigin, pricePrev: primary.pricePrev,
+          diffFromOrigin: primary.diffFromOrigin, diffFromPrev: primary.diffFromPrev }
+      : null;
+  }
   return rows;
 }
 
@@ -649,6 +777,7 @@ export default {
   countApplicationsByType,
   validateCapacitySum,
   lockApprovedPrice,
+  totalCapacityOf,
   resolveBoothTypeForApply,
   boothTypePriceSql,
   describeBoothTypeSave,

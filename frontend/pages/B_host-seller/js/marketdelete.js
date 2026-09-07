@@ -526,8 +526,12 @@ function renderMarketItem(market) {
          수정·취소만 잠그고 조회는 열어둡니다. -->
     <a class="btn btn-sage btn-sm" href="market-detail?marketId=${id}">보러가기</a>
     <!-- [현장 QR 체크인] 개최일에 판매자 QR 을 찍어 출석을 확인하는 화면.
+         주소에 .html 을 붙이지 마세요. 개발 서버가 확장자 있는 주소를 확장자 없는 주소로
+         리다이렉트하면서 **쿼리스트링을 버립니다.** 그러면 marketId 가 사라져
+         "어느 마켓인지 알 수 없어요" 가 뜹니다. (market-detail 링크도 같은 이유로 확장자가 없습니다)
          취소된 마켓에서는 열 이유가 없으므로 잠급니다. -->
-    <a class="btn btn-outline btn-sm" href="checkin-scan.html?marketId=${id}"
+    <a class="btn btn-outline btn-sm" href="checkin-scan?marketId=${id}"
+       onclick="try{sessionStorage.setItem('checkinMarketId','${id}')}catch(e){}"
        ${statusKey === 'cancel' ? 'aria-disabled="true" tabindex="-1" title="취소된 마켓이에요." onclick="return false;"' : ''}>현장 체크인</a>
   </div>
 

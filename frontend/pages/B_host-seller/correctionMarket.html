@@ -10,20 +10,21 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap"
         rel="stylesheet" />
-    <link rel="stylesheet" href="../../common/css/style.css" />
+    <link rel="stylesheet" href="../../common/css/style.css?v=5" />
     <link rel="stylesheet" href="css/host-seller.css?v=2" />
     <script src="//dapi.kakao.com/v2/maps/sdk.js?appkey=19f0092b5cdea100b70fdb607cc3ddd0&libraries=services"></script>
     <script type="module" src="js/marketmap.js?v=2"></script>
     <script src="//t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
     <script src="../../common/js/api.js?v=4"></script>
+    <script src="../../common/js/booth-types.js?v=3"></script>
     <script type="module" src="js/marketdate.js?v=2"></script>
-    <script type="module" src="js/marketcorrection.js?v=3"></script>
+    <script type="module" src="js/marketcorrection.js?v=5"></script>
     <!-- <script src="../../common/js/api.js"></script> -->
     <!-- [C-01] 역할별 첫 화면 분기 / 주최자 전용 화면 접근 차단 -->
-    <script src="../../common/js/role-routing.js?v=3"></script>
+    <script src="../../common/js/role-routing.js?v=5"></script>
     <!-- [공통] 상단 고정 네비게이션 바 (모든 화면 공통) -->
-    <link rel="stylesheet" href="../../common/css/global-nav.css?v=2" />
-    <script src="../../common/js/global-nav.js?v=2" defer></script>
+    <link rel="stylesheet" href="../../common/css/global-nav.css?v=4" />
+    <script src="../../common/js/global-nav.js?v=5" defer></script>
 </head>
 
 <body>
@@ -71,6 +72,21 @@
                     <input type="number" id="booth-price" class="form-input" placeholder="0" min="0" required />
                     <p class="form-hint">참가비가 없다면 0을 입력해주세요.</p>
                 </div>
+
+                    <!-- [부스 등급] 스탠다드 → 프리미엄 → 스페셜.
+                         이름은 입력받지 않고 순서대로 자동으로 붙습니다.
+                         첫 번째(스탠다드) 가격이 위 「부스료」와 자동으로 맞춰집니다. -->
+                    <div class="form-field">
+                      <label>부스 등급 <span class="form-optional">선택</span></label>
+                      <p class="form-hint" id="booth-type-hint">
+                        등급을 나누면 가격을 다르게 받을 수 있어요. 등급을 쓰면 총 부스 수는 칸 수 합계로 자동 계산돼요.
+                      </p>
+                      <div id="booth-type-list"></div>
+                      <div id="booth-type-capacity-summary" class="form-hint"></div>
+                      <button type="button" id="booth-type-add" class="btn btn-outline btn-sm">＋ 부스 추가</button>
+                      <span id="booth-type-count" class="form-hint"></span>
+                    </div>
+
 
                 <div class="form-field">
                     <label for="max-participants">허용 가능한 최대 부스 수</label>

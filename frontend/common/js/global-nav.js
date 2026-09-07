@@ -138,6 +138,11 @@
           '<div class="gnav-notify-body" id="nav-notify-body">' +
             '<p class="gnav-notify-empty">아직 알림이 없어요.</p>' +
           '</div>' +
+          // [알림 내역] 종 버튼은 최근 것만 보여줍니다.
+          //   지난 알림을 다시 찾으려면 전체 목록이 필요합니다.
+          '<a class="gnav-notify-more" href="/pages/A_auth-main/notification-history.html">' +
+            '알림 내역 전체 보기' +
+          '</a>' +
         '</div>' +
       '</div>'
     );

@@ -46,19 +46,36 @@ function isEndedNow(m) {
   return isExpiredByDate(m.eventDate_max);
 }
 
-// [추가] 진행 예정 행사: 아직 행사 시작일(eventDate_min) 전인 마켓
-function isUpcomingNow(m) {
-  const today = todayMidnight();
-  const min = new Date(m.eventDate_min);
-  min.setHours(0, 0, 0, 0);
-  return today < min;
+// [제거됨] isUpcomingNow
+//   "행사 시작 전이면 진행 예정" 이라는 단순 판정이라, 모집 기간이 열려 있는 마켓까지
+//   진행 예정으로 잡았습니다. 판정은 getMarketStatus 한 곳에서만 합니다.
+
+// [통일] 카드 하나의 상태를 하나의 기준으로만 판정
+// 우선순위: 종료 > 모집 중(모집 기간 안) > 행사 중(행사 기간 안) > 진행 예정(그 외, 행사 시작 전)
+function getMarketStatus(m) {
+  if (isEndedNow(m)) return "ended";
+  if (isRecruitingNow(m)) return "recruiting";
+  if (isOngoingNow(m)) return "ongoing";
+  return "upcoming";
 }
 
+/**
+ * [상태 판정 일원화] 탭 필터도 카드 배지와 **같은 함수**를 씁니다.
+ *
+ *   예전에는 둘이 따로 판단했습니다.
+ *     탭 필터(isUpcomingNow): 행사 시작 전이면 무조건 「진행 예정」
+ *     카드 배지(getMarketStatus): 모집 중을 먼저 봐서 「모집 중」
+ *
+ *   그래서 모집 기간이 열려 있는 마켓이 **「진행 예정」 탭에 들어가면서
+ *   배지는 「모집 중」으로 찍히는** 상태가 됐습니다.
+ *   같은 마켓이 「모집 중인 행사」 탭에도, 「진행 예정 행사」 탭에도 나왔습니다.
+ *
+ *   판정 기준은 한 곳(getMarketStatus)에만 두고 양쪽이 그것을 참조합니다.
+ *   우선순위: 종료 > 모집 중 > 행사 중 > 진행 예정
+ */
 function filterByTab(markets, tab) {
-  if (tab === "ongoing") return markets.filter(isOngoingNow);
-  if (tab === "upcoming") return markets.filter(isUpcomingNow);
-  if (tab === "ended") return markets.filter(isEndedNow);
-  return markets.filter(isRecruitingNow);
+  const want = tab === "ongoing" || tab === "upcoming" || tab === "ended" ? tab : "recruiting";
+  return markets.filter((m) => getMarketStatus(m) === want);
 }
 
 // [상태/페이지네이션]
@@ -74,15 +91,6 @@ let allMarketsForMap = [];
 function renderRegionMapForCurrentTab() {
   if (!window.RegionMap) return;
   window.RegionMap.render(filterByTab(allMarketsForMap, currentTab));
-}
-
-// [통일] 카드 하나의 상태를 하나의 기준으로만 판정
-// 우선순위: 종료 > 모집 중(모집 기간 안) > 행사 중(행사 기간 안) > 진행 예정(그 외, 행사 시작 전)
-function getMarketStatus(m) {
-  if (isEndedNow(m)) return "ended";
-  if (isRecruitingNow(m)) return "recruiting";
-  if (isOngoingNow(m)) return "ongoing";
-  return "upcoming";
 }
 
 // [통일] D-day는 상태별로 "그 상태가 끝나는 기준일"까지 남은 일수
@@ -130,6 +138,80 @@ function getPriceChange(m) {
 }
 
 // [참가비 블록] 시안 스타일: 기존 금액 → 변경 금액 + 변동률 배지 + 안내문
+/* ── 부스 등급 (프리미엄 / 스탠다드 / 베이직) ──────────────────────
+   등급이 없는 마켓은 이 블록 전체를 그리지 않습니다.
+   기존 단일 가격 마켓이 대부분이라, 빈 껍데기가 보이면 오히려 지저분해집니다. */
+
+// 등급 순서는 기본 → 상위 (스탠다드 → 프리미엄 → 스페셜).
+// 첫 번째(스탠다드)가 그 마켓의 대표 가격입니다.
+const GRADE_TONE = { '스탠다드': 'standard', '프리미엄': 'premium', '스페셜': 'special' };
+
+function gradeTone(name, idx) {
+  // 주최자가 이름을 직접 바꾼 경우도 있어, 이름이 안 맞으면 순서로 색을 정합니다.
+  return GRADE_TONE[name] || ['standard', 'premium', 'special'][idx] || 'standard';
+}
+
+function wonShort(n) {
+  const v = Number(n) || 0;
+  return v === 0 ? '무료' : v.toLocaleString() + '원';
+}
+
+/** 금액 변동 배지. 서버가 계산해 준 diff 를 그대로 씁니다. */
+function renderGradeDiff(t) {
+  // 처음 대비 변동이 없으면 배지를 달지 않습니다. 모든 등급에 "0원" 이 붙으면 눈만 어지럽습니다.
+  if (!t.diffFromOrigin) return '';
+  const up = t.diffFromOrigin > 0;
+  const abs = Math.abs(t.diffFromOrigin).toLocaleString();
+
+  // 처음 금액이 아주 작으면 비율이 무의미하게 커집니다. (1원 -> 10,000원 = 999900%)
+  // 그럴 때는 비율 대신 차액만 보여줍니다.
+  const base = Number(t.priceOrigin) || 0;
+  const pct = base >= 1000 ? Math.round(Math.abs(t.diffFromOrigin) / base * 100) : null;
+
+  const recent = t.diffFromPrev
+    ? ` (직전 ${t.diffFromPrev > 0 ? '+' : '-'}${Math.abs(t.diffFromPrev).toLocaleString()}원)`
+    : '';
+
+  return `<span class="grade-diff ${up ? 'up' : 'down'}"
+    title="처음 ${base.toLocaleString()}원${recent}">${up ? '▲' : '▼'} ${abs}원${
+    pct !== null ? ` (${pct}%)` : ''}</span>`;
+}
+
+/** 등급별 신청 현황 게이지 */
+function renderGradeGauge(t) {
+  const applied = Number(t.applicationCount) || 0;
+  const cap = Number(t.capacity) || 0;
+
+  // 정원을 정하지 않은 등급은 막대를 그리지 않고 신청 수만 씁니다.
+  // 분모 없이 막대를 그리면 얼마나 찼는지 잘못 읽히게 됩니다.
+  if (cap <= 0) {
+    return `<span class="grade-count">신청 ${applied}칸</span>`;
+  }
+
+  const pct = Math.min(100, Math.round((applied / cap) * 100));
+  const state = applied >= cap ? 'full' : (pct >= 70 ? 'warn' : 'ok');
+  return `
+    <span class="grade-count">${applied}/${cap}칸</span>
+    <span class="grade-bar"><i class="${state}" style="width:${pct}%"></i></span>`;
+}
+
+function renderBoothGrades(m) {
+  const list = Array.isArray(m.boothTypes) ? m.boothTypes.filter((t) => t.isActive !== false) : [];
+  if (list.length === 0) return '';
+
+  return `
+    <div class="grade-block">
+      <div class="grade-title">부스 등급</div>
+      ${list.map((t, i) => `
+        <div class="grade-row ${gradeTone(t.name, i)}">
+          <span class="grade-name">${t.name}</span>
+          <span class="grade-price">${wonShort(t.price)}</span>
+          ${renderGradeDiff(t)}
+          ${renderGradeGauge(t)}
+        </div>`).join('')}
+    </div>`;
+}
+
 function renderPriceBlock(m) {
   const { original, current, direction, pct, fromFree } = getPriceChange(m);
   const isFree = current === 0;
@@ -440,6 +522,8 @@ function renderMarketList(pageMarkets, totalCount) {
           </div>
 
           ${renderBoothGauge(m)}
+
+          ${renderBoothGrades(m)}
 
           ${renderPriceBlock(m)}
 

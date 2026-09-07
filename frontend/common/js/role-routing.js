@@ -255,9 +255,26 @@
     window.location.replace(getRoleHomePath(account));
   }
 
+  /**
+   * 확장자가 있든 없든 같은 화면으로 봅니다.
+   *
+   *   이 사이트는 /pages/.../mymarketpage.html 과 /pages/.../mymarketpage 가 같은 화면입니다.
+   *   (개발 서버가 확장자 있는 주소를 확장자 없는 쪽으로 리다이렉트합니다)
+   *   그런데 목록에는 'mymarketpage.html' 만 있어서, 확장자 없이 들어오면
+   *   **주최자 전용 가드가 통째로 건너뛰어졌습니다.**
+   *   판매자 계정으로 /pages/B_host-seller/mymarketpage 를 치면 그냥 열렸습니다.
+   *   양쪽 다 확장자를 떼고 비교하도록 고칩니다.
+   */
+  function stripExt(name) {
+    return String(name).toLowerCase().replace(/\.html?$/, '');
+  }
+
   function isHostOnlyPath(path) {
-    var file = String(path).split('?')[0].split('#')[0].split('/').pop().toLowerCase();
-    return HOST_ONLY_PAGES.indexOf(file) >= 0;
+    var file = stripExt(String(path).split('?')[0].split('#')[0].split('/').pop());
+    for (var i = 0; i < HOST_ONLY_PAGES.length; i++) {
+      if (stripExt(HOST_ONLY_PAGES[i]) === file) return true;
+    }
+    return false;
   }
 
   function isAllowedForRole(path, role) {

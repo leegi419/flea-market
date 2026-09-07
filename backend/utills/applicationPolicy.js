@@ -212,7 +212,10 @@ export async function checkBoothApplyEligibility(db, {
   //    이 제한을 완전히 없앴습니다. 실제로 어느 마켓에 참여할지는 판매자 본인이 결정하고,
   //    나머지는 취소/환불 정책(부스 취소 시 환불 정책)으로 정리합니다.
 
-  return { ok: true, market };
+  // 등급 정원 검사도 같은 판정을 써야 합니다.
+  //   여기서는 "행사 시작 전까지만" 초과를 허용하는데,
+  //   등급 쪽이 플래그만 보면 행사가 시작된 뒤에도 등급 초과가 열려 있게 됩니다.
+  return { ok: true, market, overcapacityAllowed };
 }
 
 /**

@@ -5,6 +5,12 @@
 import pool from '../config/db.js';
 // [부스 신청 정합성] 신청 자격 판정은 utills/applicationPolicy.js 한 곳에서 합니다.
 import { checkBoothApplyEligibility, toDateKey, todayKey } from '../utills/applicationPolicy.js';
+// [부스 등급] 판매자가 고른 등급이 유효한지·자리가 남았는지 확인합니다.
+import { resolveBoothTypeForApply } from '../utills/boothTypes.js';
+// [환불 예상] 규정과 금액 계산은 utills/refundPolicy.js 한 곳에서 합니다.
+//   화면이 직접 계산하면 정책이 바뀔 때 양쪽을 고쳐야 하고,
+//   한쪽만 고치면 "안내와 실제 환불액이 다른" 상태가 됩니다.
+import { buildRefundPreview } from '../utills/refundPolicy.js';
 // [중복 부스 신청 안내] 마켓 단위 중복 판정은 utills/duplicateApplication.js 한 곳에서 합니다.
 import {
   getSellerDuplicateState,
@@ -16,7 +22,7 @@ import { createNotification } from '../services/notificationService.js';
 // POST /api/applications (로그인 필요, 판매자)
 export async function applyForBooth(req, res) {
   const { userId } = req.user;
-  const { marketId, boothNumber, title, itemName, productDesc, itemImage } = req.body;
+  const { marketId, boothNumber, title, itemName, productDesc, itemImage, boothTypeId } = req.body;
 
   if (!marketId || !boothNumber || !itemName) {
     return res.status(400).json({ success: false, data: null, message: '마켓, 부스 번호, 물품명은 필수입니다.' });
@@ -47,10 +53,36 @@ export async function applyForBooth(req, res) {
       });
     }
 
+    // [부스 등급] 등급을 쓰는 마켓이면 선택값을 확인합니다.
+    //   - 등급을 안 쓰는 마켓이면 boothType 이 null 이고 아래 INSERT 에서 빠집니다.
+    //   - 고르지 않았거나(400), 없는 등급이거나, 그 등급이 마감이면(409) 여기서 막힙니다.
+    //   같은 트랜잭션 안에서 확인해야, 두 사람이 마지막 한 자리를 동시에 노려도
+    //   한 명만 통과합니다. (markets 행이 이미 FOR UPDATE 로 잠겨 있습니다)
+    const typeCheck = await resolveBoothTypeForApply(conn, {
+      marketId,
+      boothTypeId,
+      // 정책이 이미 계산한 값을 그대로 씁니다.
+      //   플래그만 보면 행사가 시작된 뒤에도 등급 초과가 열려 있어,
+      //   총 정원은 막히는데 등급은 뚫리는 상태가 됩니다.
+      allowOvercapacity: check.overcapacityAllowed === true,
+    });
+    if (!typeCheck.ok) {
+      await conn.rollback();
+      return res.status(typeCheck.status).json({
+        success: false, data: null, code: typeCheck.code, message: typeCheck.message,
+      });
+    }
+    const pickedTypeId = typeCheck.boothType ? typeCheck.boothType.boothTypeId : null;
+
+    // boothTypeId 컬럼이 없는 DB 에서도 신청이 죽지 않게 컬럼 유무로 문장을 나눕니다.
+    const typeCol = pickedTypeId != null ? ', boothTypeId' : '';
+    const typePh = pickedTypeId != null ? ', ?' : '';
+    const typeVal = pickedTypeId != null ? [pickedTypeId] : [];
+
     const [result] = await conn.query(
-      `INSERT INTO applications (marketId, sellerId, boothNumber, title, itemName, productDesc, itemImage, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')`,
-      [marketId, userId, boothNumber, title || null, itemName, productDesc || null, itemImage || null]
+      `INSERT INTO applications (marketId, sellerId, boothNumber, title, itemName, productDesc, itemImage, status${typeCol})
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending'${typePh})`,
+      [marketId, userId, boothNumber, title || null, itemName, productDesc || null, itemImage || null, ...typeVal]
     );
 
     // [추가] 알림에 필요한 마켓 정보(주최자, 마켓명) 조회 — 같은 트랜잭션 안에서 조회
@@ -165,7 +197,10 @@ export async function getMyApplications(req, res) {
          EXISTS(
            SELECT 1 FROM payments p WHERE p.applicationId = a.applicationId AND p.status = 'Paid'
          ) AS isPaid,
-          pay.refundAmount AS refundAmount
+          pay.refundAmount AS refundAmount,
+         -- [환불 예상] 실제 결제 금액. 부스 등급을 쓰면 boothPrice 와 다를 수 있어
+         -- 결제 기록의 금액을 그대로 씁니다.
+         pay.amount AS paidAmount
        FROM applications a
        JOIN markets m ON m.marketId = a.marketId
        LEFT JOIN users hu ON hu.userId = m.hostId
@@ -179,6 +214,18 @@ export async function getMyApplications(req, res) {
     // [중복 부스 신청 안내] 같은 마켓에 2건 이상 신청한 건에 marketDuplicateCount 를 붙입니다.
     //   이미 내 신청을 전부 받아온 목록이라 추가 쿼리 없이 배열 안에서 셉니다.
     const withDuplicate = attachDuplicateToMyApplications(rows);
+    // [환불 예상] 결제한 신청에는 "지금 취소하면 얼마" 를 함께 내려줍니다.
+    //   판매자가 확인을 누르기 전에 금액을 알아야 합니다.
+    //   응답으로 나가는 배열(withDuplicate)에 붙여야 합니다. rows 에 붙이면 화면까지 가지 않습니다.
+    for (const row of withDuplicate) {
+      if (!row.isPaid) continue;
+      row.refundPreview = buildRefundPreview(
+        row.eventDate_min,
+        // 실제 결제액이 있으면 그것을, 없으면 부스료를 씁니다.
+        row.paidAmount != null ? row.paidAmount : row.boothPrice
+      );
+    }
+
 
     return res.status(200).json({ success: true, data: withDuplicate, message: '내 부스 신청 목록을 조회했습니다.' });
   } catch (error) {

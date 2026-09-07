@@ -1,0 +1,58 @@
+/* frontend/common/css/notification-history.css — 알림 내역 */
+
+.nh-wrap { max-width: 700px; margin: 0 auto; }
+
+/* 역할 전환 */
+.nh-roles { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.nh-role {
+  border: 2px solid #2A1C12; background: #fff; border-radius: 999px;
+  padding: 5px 14px; font-size: .86rem; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.nh-role.on { background: #2A1C12; color: #FBF6EC; }
+.nh-role.host.on   { background: #E0912F; color: #2A1C12; border-color: #E0912F; }
+.nh-role.seller.on { background: #2f8f4e; color: #fff; border-color: #2f8f4e; }
+
+.nh-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.nh-filters select {
+  border: 2px solid #2A1C12; border-radius: 8px; padding: 6px 9px;
+  font-size: .88rem; background: #fff; font-family: inherit;
+}
+.nh-unread { display: flex; align-items: center; gap: 5px; font-size: .88rem; cursor: pointer; }
+.nh-filters .btn { margin-left: auto; }
+
+.nh-count { color: #6b5a4a; font-size: .85rem; margin: 0 0 10px; }
+
+/* 목록 */
+.nh-list { list-style: none; padding: 0; margin: 0; }
+.nh-loading, .nh-empty { color: #6b5a4a; padding: 24px 0; text-align: center; }
+
+.nh-item {
+  display: block; background: #fff; border: 1px solid #d9cdb8;
+  border-radius: 10px; padding: 11px 13px; margin-bottom: 8px;
+  text-decoration: none; color: inherit;
+}
+.nh-item.unread { border-left: 5px solid #E0912F; background: #fffdf7; }
+
+.nh-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 3px; }
+.nh-badge {
+  font-size: .72rem; font-weight: 700; border-radius: 999px; padding: 2px 8px; white-space: nowrap;
+}
+.nh-badge.host   { background: #E0912F; color: #2A1C12; }
+.nh-badge.seller { background: #2f8f4e; color: #fff; }
+.nh-title { font-weight: 700; font-size: .94rem; }
+.nh-time { margin-left: auto; font-size: .78rem; color: #6b5a4a; white-space: nowrap; }
+.nh-msg { font-size: .88rem; line-height: 1.5; color: #4a3a2a; margin: 0; }
+
+/* 페이지 넘기기 */
+.nh-pager { display: flex; gap: 5px; justify-content: center; flex-wrap: wrap; margin-top: 16px; }
+.nh-pager button {
+  border: 1px solid #b9a894; background: #fff; border-radius: 8px;
+  min-width: 36px; padding: 6px 10px; font-size: .86rem; cursor: pointer; font-family: inherit;
+}
+.nh-pager button.on { background: #2A1C12; color: #FBF6EC; border-color: #2A1C12; font-weight: 700; }
+.nh-pager button:disabled { opacity: .4; cursor: not-allowed; }
+
+@media (max-width: 520px) {
+  .nh-filters .btn { margin-left: 0; }
+  .nh-time { margin-left: 0; width: 100%; }
+}

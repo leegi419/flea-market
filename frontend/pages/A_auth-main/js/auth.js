@@ -370,7 +370,12 @@ if (registerForm) {
         }
 
         setTimeout(() => {
-          window.location.href = 'login.html';
+          // [알림 설정] 가입 직후 한 번만 보여줍니다.
+          //   주최자는 주최자·판매자 두 단계, 판매자는 한 단계입니다.
+          //   토큰이 있어야 설정을 저장할 수 있으므로 위에서 세션을 심은 뒤에만 갑니다.
+          //   토큰이 없으면(가입은 됐지만 자동 로그인이 안 된 경우) 그냥 로그인으로 보냅니다.
+          const canSetup = !!(result.data && result.data.token);
+          window.location.href = canSetup ? 'notification-onboarding.html' : 'login.html';
         }, 800);
       } else {
         showAlert(result.message || '회원가입에 실패했습니다.');

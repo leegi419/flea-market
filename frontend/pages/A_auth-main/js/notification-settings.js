@@ -37,6 +37,10 @@
   function render() {
     var d = state.data;
     var html = d.categories.map(function (c) {
+      // 역할 구분선. 두 역할을 한 화면에 두되 어느 쪽인지 늘 보이게 합니다.
+      if (c.__section) {
+        return '<h2 class="ns-section ' + c.__role + '">' + esc(c.__section) + '</h2>';
+      }
       var sub = '';
 
       if (c.hasLeadHours) {
@@ -74,6 +78,12 @@
           + '<label><input type="radio" name="ns-region-mode" value="all"' + (all ? ' checked' : '') + ' /> 모든 지역 받기</label>'
           + '<label><input type="radio" name="ns-region-mode" value="pick"' + (all ? '' : ' checked') + ' /> 지역 선택하기</label>'
           + '</div>'
+          // 지역이 17개라 하나씩 누르면 번거롭습니다. 일괄 버튼을 둡니다.
+          + '<div class="ns-region-bulk" id="ns-region-bulk"' + (all ? ' hidden' : '') + '>'
+          + '<button type="button" data-region-all="on">전체 선택</button>'
+          + '<button type="button" data-region-all="off">전체 해제</button>'
+          + '<span class="ns-region-picked" id="ns-region-picked"></span>'
+          + '</div>'
           + '<div class="ns-regions" id="ns-regions"' + (all ? ' hidden' : '') + '>'
           + state.allRegions.map(function (r) {
               return '<button type="button" class="ns-region' + (state.regions.has(r) ? ' on' : '')
@@ -108,6 +118,14 @@
     bind();
   }
 
+  /** 고른 지역 수를 보여줍니다. 17개 중 몇 개인지 한눈에 보이게. */
+  function updatePickedCount() {
+    var el = document.getElementById('ns-region-picked');
+    if (!el) return;
+    var n = state.regions.size;
+    el.textContent = n === 0 ? '아직 고른 지역이 없어요 (전체 알림)' : n + '개 지역 선택';
+  }
+
   function bind() {
     // 토글: 하위 옵션도 같이 접고 폅니다.
     $('ns-list').querySelectorAll('input[data-key]').forEach(function (el) {
@@ -140,6 +158,8 @@
         var pick = el.value === 'pick';
         var box = $('ns-regions');
         if (box) box.hidden = !pick;
+        var bulk = $('ns-region-bulk');
+        if (bulk) bulk.hidden = !pick;
         // "모든 지역" 을 고르면 선택을 비웁니다. 서버는 지역 행이 없으면 전체로 봅니다.
         if (!pick) {
           state.regions.clear();
@@ -150,11 +170,26 @@
       });
     });
 
+    $('ns-list').querySelectorAll('[data-region-all]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var on = btn.dataset.regionAll === 'on';
+        state.regions.clear();
+        $('ns-list').querySelectorAll('.ns-region').forEach(function (b) {
+          b.classList.toggle('on', on);
+          if (on) state.regions.add(b.dataset.region);
+        });
+        updatePickedCount();
+        updateRegionWarning();
+        markDirty();
+      });
+    });
+
     $('ns-list').querySelectorAll('.ns-region').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var r = btn.dataset.region;
         if (state.regions.has(r)) { state.regions.delete(r); btn.classList.remove('on'); }
         else { state.regions.add(r); btn.classList.add('on'); }
+        updatePickedCount();
         updateRegionWarning();
         markDirty();
       });
@@ -174,6 +209,21 @@
       $('ns-list').innerHTML = '';
       banner('error', (res && res.message) || '알림 설정을 불러오지 못했어요.');
       return;
+    }
+    // [역할 분리] 서버가 roles: {host:[...], seller:[...]} 로 내려줍니다.
+    //   마이페이지에서는 두 역할을 한 화면에 보여주되, 제목으로 구분합니다.
+    //   섞어서 나열하면 어느 역할의 알림인지 알 수 없습니다.
+    if (res.data.roles) {
+      const merged = [];
+      if (res.data.roles.host && res.data.roles.host.length) {
+        merged.push({ __section: '주최자 알림', __role: 'host' });
+        merged.push(...res.data.roles.host);
+      }
+      if (res.data.roles.seller && res.data.roles.seller.length) {
+        merged.push({ __section: '판매자 알림', __role: 'seller' });
+        merged.push(...res.data.roles.seller);
+      }
+      res.data.categories = merged;
     }
     state.data = res.data;
     state.regions = new Set(res.data.regions || []);

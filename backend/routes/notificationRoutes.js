@@ -6,6 +6,7 @@ import {
   getUnreadCount,
   markNotificationRead,
   markAllNotificationsRead,
+  getNotificationFilters,
 } from '../controllers/notificationController.js';
 import { getNotificationSettings, updateNotificationSettings } from '../controllers/notificationSettingsController.js';
 import { authenticateToken } from '../middleware/authMiddleware.js';
@@ -82,6 +83,20 @@ router.get('/unread-count', authenticateToken, getUnreadCount);
  *       200: { description: 저장됨 }
  */
 // 주의: '/:notificationId/read' 보다 먼저 등록해야 settings 가 id 로 해석되지 않습니다.
+/**
+ * @swagger
+ * /notifications/filters:
+ *   get:
+ *     summary: 알림 종류 필터 목록
+ *     description: 히스토리 화면의 종류 드롭다운용. 묶음 키와 이름, 역할을 돌려줍니다.
+ *     tags: [Notifications]
+ *     security: [{ bearerAuth: [] }]
+ *     responses:
+ *       200: { description: 조회 성공 }
+ */
+// 주의: '/:notificationId/read' 보다 먼저 등록해야 filters 가 id 로 해석되지 않습니다.
+router.get('/filters', authenticateToken, getNotificationFilters);
+
 router.get('/settings', authenticateToken, getNotificationSettings);
 router.put('/settings', authenticateToken, updateNotificationSettings);
 

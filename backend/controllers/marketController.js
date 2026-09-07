@@ -7,6 +7,11 @@ import { attachDuplicateToMarketApplications, summarizeDuplicates } from '../uti
 import { createNotification, createNotifications } from '../services/notificationService.js';
 // [신규 마켓 알림] 관심 지역을 등록한 판매자를 골라냅니다.
 import { findNewMarketRecipients } from '../utills/notificationSettings.js';
+// [부스 등급] 등급 목록·신청 수·가격 이력을 마켓 응답에 붙입니다.
+//   테이블만 있고 아무도 쓰지 않아 화면에 전혀 나오지 않던 것을 배선합니다.
+import { attachBoothTypes, saveBoothTypes, normalizeBoothTypes, totalCapacityOf } from '../utills/boothTypes.js';
+// [환불 예상] 주최자도 결제취소 전에 얼마가 나가는지 알아야 합니다.
+import { buildRefundPreview } from '../utills/refundPolicy.js';
 
 // GET /api/markets?region=&sort=latest|eventDate|priceLow&includeExpired=
 export async function getMarketList(req, res) {
@@ -44,6 +49,9 @@ export async function getMarketList(req, res) {
     }
 
     const [rows] = await pool.query(sql, values);
+    // 메인 카드가 등급별 게이지와 대표 가격을 그리려면 등급 정보가 필요합니다.
+    await attachBoothTypes(pool, rows);
+
     return res.status(200).json({ success: true, data: rows, message: '마켓 목록을 조회했습니다.' });
   } catch (error) {
     console.error('마켓 목록 조회 오류:', error.message);
@@ -86,6 +94,10 @@ export async function getMarketDetail(req, res) {
     market.isOwner = isOwner;
     market.isCancelled = Number(market.isExpired) === 2;
 
+    // 주최자 본인은 「신규 신청 중단」한 등급도 봐야 수정할 수 있습니다.
+    const detailRows = [market];
+    await attachBoothTypes(pool, detailRows, { includeInactive: !!market.isOwner });
+
     return res.status(200).json({ success: true, data: market, message: '마켓 상세 정보를 조회했습니다.' });
   } catch (error) {
     console.error('마켓 상세 조회 오류:', error.message);
@@ -96,7 +108,7 @@ export async function getMarketDetail(req, res) {
 // POST /api/markets (로그인 필요, 주최자)
 export async function createMarket(req, res) {
   const { userId } = req.user;
-  let { title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplication, allowOvercapacity, boothPrice_origin } = req.body;
+  let { title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplication, allowOvercapacity, boothPrice_origin, boothTypes } = req.body;
   //console.log(req.body);
 
   if (!title || !eventDate_min || !eventDate_max || !locationName) {
@@ -129,6 +141,39 @@ export async function createMarket(req, res) {
 
     //console.log('req.body 전체:', req.body);
 
+    // [부스 등급] 주최자가 등급을 넣었으면 함께 저장합니다.
+    //   첫 번째 등급(프리미엄)의 금액을 markets.boothPrice 에도 반영합니다.
+    //   대표 가격이 두 곳에서 갈리면, 등급을 모르는 화면이 엉뚱한 금액을 보여줍니다.
+    let boothTypeResult = null;
+    if (Array.isArray(boothTypes) && boothTypes.length > 0) {
+      try {
+        const normalized = normalizeBoothTypes(boothTypes);
+        if (normalized.ok) {
+          boothTypeResult = await saveBoothTypes(pool, result.insertId, normalized.list);
+          const primary = normalized.list[0];
+          if (primary) {
+            // [총 부스 수] 등급을 쓰면 합계가 곧 총 정원입니다.
+            //   따로 받으면 크면 무의미하고 작으면 등급 칸을 막아버립니다.
+            //   0 이면 제한 없음 — 스키마 기본값(9999)과 맞춰 저장합니다.
+            const totalCap = totalCapacityOf(normalized.list);
+            await pool.query(
+              `UPDATE markets
+                  SET boothPrice = ?, boothPrice_origin = COALESCE(boothPrice_origin, ?),
+                      maxParticipants = ?
+                WHERE marketId = ?`,
+              [primary.price, primary.price, totalCap > 0 ? totalCap : 9999, result.insertId]
+            );
+          }
+        } else {
+          boothTypeResult = { ok: false, message: normalized.message };
+        }
+      } catch (btError) {
+        // 등급 저장이 실패해도 마켓 등록 자체는 살립니다.
+        console.error('부스 등급 저장 실패(마켓은 등록됨):', btError.message);
+        boothTypeResult = { ok: false, message: '부스 등급을 저장하지 못했어요. 마켓 수정에서 다시 시도해 주세요.' };
+      }
+    }
+
     // [신규 마켓 알림] 관심 지역이 맞는 판매자에게 알립니다.
     //   지역을 등록하지 않은 사람은 "모든 지역" 으로 보고 전부 받습니다.
     //   발송량이 커질 수 있어 세 가지를 지켰습니다:
@@ -158,8 +203,10 @@ export async function createMarket(req, res) {
 
     return res.status(201).json({
       success: true,
-      data: { marketId: result.insertId },
-      message: '마켓이 등록되었습니다.',
+      data: { marketId: result.insertId, boothTypes: boothTypeResult },
+      message: boothTypeResult && boothTypeResult.ok === false
+        ? `마켓은 등록됐지만 부스 등급 저장에 문제가 있어요: ${boothTypeResult.message}`
+        : '마켓이 등록되었습니다.',
     });
   } catch (error) {
     console.error('마켓 등록 오류:', error.message);
@@ -224,12 +271,45 @@ export async function updateMarketStatus(req, res) {
     // [수정] 예전에는 `if (marketImage)` 라서 null/'' 이 무시됐고, 이미지 삭제가 불가능했습니다.
     if (marketImage !== undefined) { fields.push('marketImage = ?'); values.push(marketImage || null); }
 
-    if (fields.length === 0) {
+    // [부스 등급] 등급만 바꾸는 것도 엄연한 수정입니다.
+    //   여기서 걸러버리면 등급 저장 코드까지 가지 못해, 주최자가 가격을 고쳐도
+    //   "수정할 내용이 없습니다" 만 뜨고 아무 일도 일어나지 않습니다.
+    const hasBoothTypeChange = Array.isArray(req.body?.boothTypes);
+
+    if (fields.length === 0 && !hasBoothTypeChange) {
       return res.status(400).json({ success: false, data: null, message: '수정할 내용이 없습니다.' });
     }
 
-    values.push(marketId);
-    await pool.query(`UPDATE markets SET ${fields.join(', ')} WHERE marketId = ?`, values);
+    // 바꿀 컬럼이 없으면 UPDATE 를 건너뜁니다. (등급만 수정하는 경우)
+    if (fields.length > 0) {
+      values.push(marketId);
+      await pool.query(`UPDATE markets SET ${fields.join(', ')} WHERE marketId = ?`, values);
+    }
+
+    // [부스 등급] 수정 화면에서 등급을 보냈으면 저장합니다.
+    //   가격이 바뀌면 boothTypes.js 가 직전가(pricePrev)를 자동으로 남깁니다.
+    let boothTypeResult = null;
+    if (Array.isArray(req.body?.boothTypes)) {
+      const normalized = normalizeBoothTypes(req.body.boothTypes);
+      if (!normalized.ok) {
+        return res.status(400).json({ success: false, data: null, message: normalized.message });
+      }
+      boothTypeResult = await saveBoothTypes(pool, marketId, normalized.list);
+      if (boothTypeResult.ok === false) {
+        // 신청자가 있는 등급을 지우려 한 경우 등 — 이유를 그대로 전달합니다.
+        return res.status(409).json({ success: false, data: null, message: boothTypeResult.message });
+      }
+      const primary = normalized.list[0];
+      if (primary) {
+        // 등급을 고치면 총 부스 수도 함께 맞춥니다.
+        //   예전에 총 8 / 등급 6 으로 등록된 마켓도 다음 수정 때 6 으로 정리됩니다.
+        const totalCap = totalCapacityOf(normalized.list);
+        await pool.query(
+          'UPDATE markets SET boothPrice = ?, maxParticipants = ? WHERE marketId = ?',
+          [primary.price, totalCap > 0 ? totalCap : 9999, marketId]
+        );
+      }
+    }
 
     // [변경 알림] 날짜와 장소만 알립니다.
     //   설명이나 이미지가 바뀔 때마다 알리면 알림이 의미를 잃습니다.
@@ -270,7 +350,7 @@ export async function updateMarketStatus(req, res) {
       console.error('마켓 변경 알림 실패(수정은 완료됨):', notifyError.message);
     }
 
-    return res.status(200).json({ success: true, data: null, message: '마켓 정보가 수정되었습니다.' });
+    return res.status(200).json({ success: true, data: { boothTypes: boothTypeResult }, message: '마켓 정보가 수정되었습니다.' });
   } catch (error) {
     console.error('마켓 상태 수정 오류:', error.message);
     return res.status(500).json({ success: false, data: null, message: '서버 오류로 마켓 수정에 실패했습니다.' });
@@ -307,7 +387,10 @@ export async function getApplicationsByMarket(req, res) {
             SELECT 1 FROM payments p WHERE p.applicationId = a.applicationId AND p.status = 'Paid'
           ) AS isPaid,
           sr.rating AS mySellerRating,
-          pay.refundReason AS refundReason
+          pay.refundReason AS refundReason,
+          pay.amount AS paidAmount,
+          -- [환불 예상] 개최일을 알아야 환불 비율을 계산할 수 있습니다.
+          DATE_FORMAT(m.eventDate_min, '%Y-%m-%d') AS eventDateMin
         FROM applications a
         JOIN markets m ON m.marketId = a.marketId
         LEFT JOIN users su ON su.userId = a.sellerId
@@ -323,6 +406,17 @@ export async function getApplicationsByMarket(req, res) {
       //   화면(market.js)은 sellerDuplicateCount 로 "중복 N" 배지를 그립니다.
       const withDuplicate = attachDuplicateToMarketApplications(rows);
       const duplicateSummary = summarizeDuplicates(withDuplicate);
+
+      // [환불 예상] 결제된 신청에 "지금 취소하면 얼마" 를 붙입니다.
+      //   주최자가 결제취소를 누르기 전에 판매자에게 얼마가 돌아가는지 알아야
+      //   "얼마 나가는지 모르고 눌렀다" 가 생기지 않습니다.
+      for (const row of withDuplicate) {
+        if (!row.isPaid) continue;
+        row.refundPreview = buildRefundPreview(
+          row.eventDateMin,
+          row.paidAmount != null ? row.paidAmount : row.boothPrice
+        );
+      }
 
       return res.status(200).json({
         success: true,

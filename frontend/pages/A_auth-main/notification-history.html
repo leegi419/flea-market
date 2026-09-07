@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>알림 내역 - 플리마켓</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="../../common/css/style.css?v=5" />
+    <link rel="stylesheet" href="../../common/css/notification-history.css?v=1" />
+    <script src="../../common/js/role-routing.js?v=5"></script>
+    <link rel="stylesheet" href="../../common/css/global-nav.css?v=4" />
+    <script src="../../common/js/global-nav.js?v=5" defer></script>
+  </head>
+
+  <body>
+    <div class="page-wrap">
+      <header class="nav">
+        <a href="../../index.html" class="brand"><span class="pin-dot" aria-hidden="true"></span>플리마켓</a>
+        <a href="notification-settings.html" class="link-ghost">알림 설정</a>
+      </header>
+
+      <div class="panel nh-wrap">
+        <span class="pin" aria-hidden="true"></span>
+        <h1>알림 내역</h1>
+        <p class="panel-sub" id="nh-retention">최근 알림을 모아서 볼 수 있어요.</p>
+
+        <!-- 역할 전환. 주최자 계정에서만 보입니다. -->
+        <div class="nh-roles" id="nh-roles" hidden>
+          <button type="button" class="nh-role on" data-audience="">전체</button>
+          <button type="button" class="nh-role host" data-audience="host">주최자 알림</button>
+          <button type="button" class="nh-role seller" data-audience="seller">판매자 알림</button>
+        </div>
+
+        <div class="nh-filters">
+          <select id="nh-category">
+            <option value="">모든 종류</option>
+          </select>
+          <label class="nh-unread">
+            <input type="checkbox" id="nh-unread" /> 안 읽은 것만
+          </label>
+          <button type="button" class="btn btn-outline btn-sm" id="nh-read-all">모두 읽음</button>
+        </div>
+
+        <p class="nh-count" id="nh-count"></p>
+        <ul class="nh-list" id="nh-list">
+          <li class="nh-loading">불러오는 중이에요…</li>
+        </ul>
+
+        <nav class="nh-pager" id="nh-pager"></nav>
+      </div>
+    </div>
+
+    <script src="../../common/js/api.js?v=4"></script>
+    <script src="js/notification-history.js?v=1"></script>
+  </body>
+</html>

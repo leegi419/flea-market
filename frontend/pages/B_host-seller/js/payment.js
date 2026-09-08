@@ -248,6 +248,11 @@ function handleToggleDetail(marketId) {
 // 알림 관련 유틸
 // ============================================
 function renderAlert(message, type = 'error') {
+  // [토스트] 화면 맨 위 alert-box 는 폼이 길면 스크롤해야 보입니다.
+  //   버튼을 누른 자리 근처에 뜨도록 우측 하단 토스트로 함께 띄웁니다.
+  //   기존 alert-box 도 그대로 둡니다 — 토스트 스크립트를 못 불러온 화면에서도
+  //   메시지가 사라지지 않게 하려는 것입니다.
+  if (window.Toast) window.Toast.show(message, type);
   const box = document.getElementById('alert-box');
   if (!box) return;
   box.textContent = message;

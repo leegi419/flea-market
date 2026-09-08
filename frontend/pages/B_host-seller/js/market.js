@@ -83,6 +83,11 @@ async function refundPayment(applicationId, reason) {
 // ---------- 화면 피드백 유틸 ----------
 
 function renderAlert(message, type = 'error') {
+  // [토스트] 화면 맨 위 alert-box 는 폼이 길면 스크롤해야 보입니다.
+  //   버튼을 누른 자리 근처에 뜨도록 우측 하단 토스트로 함께 띄웁니다.
+  //   기존 alert-box 도 그대로 둡니다 — 토스트 스크립트를 못 불러온 화면에서도
+  //   메시지가 사라지지 않게 하려는 것입니다.
+  if (window.Toast) window.Toast.show(message, type);
   const box = document.getElementById('alert-box');
   if (!box) return;
   box.textContent = message;
@@ -442,6 +447,10 @@ function handleMarketCreateSubmit() {
       boothPrice: boothPriceNum,
       description: document.getElementById('description').value.trim(),
       locationName: fullAddressVal,
+      // [주소] 나중에 수정 화면에서 각 칸을 복원할 수 있게 나눠서도 저장합니다.
+      addressBase: document.getElementById('address')?.value.trim() || null,
+      addressDetail: document.getElementById('detailAddress')?.value.trim() || null,
+      postcode: document.getElementById('postcode')?.value.trim() || null,
       region: document.getElementById('region').value || null,
       latitude: document.getElementById('latitude').value || null,
       longitude: document.getElementById('longitude').value || null,
@@ -560,6 +569,9 @@ async function loadMarketDetail() {
     const res = await getMarketDetail(marketId);
     if (res && res.success && res.data) {
       renderMarketDetail(res.data);
+      // [내 신청 현황] 마켓 정보를 그린 뒤 내가 신청한 부스를 이어서 보여줍니다.
+      //   실패해도 마켓 상세는 이미 그려져 있으므로 await 로 막지 않습니다.
+      renderMyApplications(marketId);
     } else {
       titleEl.textContent = '마켓 정보를 불러오지 못했어요';
     }
@@ -1192,6 +1204,68 @@ function handleCloseMarketClick() {
       renderAlert('서버에 연결할 수 없어요. 잠시 후 다시 시도해주세요.');
     }
   });
+}
+
+/**
+ * [내 신청 현황] 이 마켓에 내가 신청한 부스를 상세 화면에 보여줍니다.
+ *
+ *   예전에는 「내 부스 관리」에 가야만 알 수 있었습니다.
+ *   그래서 이미 신청해 놓고도 마켓 상세를 다시 열면 아무 표시가 없어,
+ *   「참가 신청」을 누르고 나서야 중복이라는 걸 알게 됐습니다.
+ *
+ *   로그인하지 않았거나 주최자 모드면 그릴 필요가 없습니다.
+ */
+async function renderMyApplications(marketId) {
+  const box = document.getElementById('my-application-box');
+  if (!box || !marketId) return;
+
+  // 비로그인은 조회 자체가 401 이라 부르지 않습니다.
+  if (typeof isLoggedIn === 'function' && !isLoggedIn()) { box.hidden = true; return; }
+
+  let list = [];
+  try {
+    const res = await getMyApplications();
+    if (res && res.success && Array.isArray(res.data)) {
+      list = res.data.filter((a) => String(a.marketId) === String(marketId));
+    }
+  } catch (err) {
+    // 신청 현황을 못 불러와도 마켓 상세는 보여야 합니다.
+    console.error('[내 신청] 조회 실패:', err);
+    box.hidden = true;
+    return;
+  }
+
+  if (list.length === 0) { box.hidden = true; return; }
+
+  const LABEL = {
+    Pending: { text: '승인 대기 중', cls: 'wait' },
+    Approved: { text: '승인됨 · 결제 필요', cls: 'ok' },
+    Paid: { text: '결제 완료', cls: 'ok' },
+    Rejected: { text: '반려됨', cls: 'bad' },
+    Refunded: { text: '결제 취소됨', cls: 'bad' },
+    Canceled: { text: '취소됨', cls: 'bad' },
+    RefundRequested: { text: '환불 요청 중', cls: 'wait' },
+  };
+
+  const rows = list.map((a) => {
+    const st = LABEL[a.status] || { text: a.status, cls: 'wait' };
+    const esc = (v) => ProfileLink.escapeHtml(String(v == null ? '' : v));
+    const grade = a.boothTypeName ? ` · ${esc(a.boothTypeName)}` : '';
+    return `<li>
+      <span class="my-app-booth">${esc(a.boothNumber || '-')}번 부스${grade}</span>
+      <span class="my-app-item">${esc(a.itemName || '')}</span>
+      <span class="my-app-status ${st.cls}">${st.text}</span>
+    </li>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="my-app-head">
+      <b>이 마켓에 신청한 내 부스</b>
+      <span class="my-app-count">${list.length}건</span>
+    </div>
+    <ul class="my-app-list">${rows}</ul>
+    <a class="my-app-link" href="mybooth">내 부스 관리에서 자세히 보기 →</a>`;
+  box.hidden = false;
 }
 
 // ---------- 부스 신청 ----------

@@ -424,3 +424,30 @@ body.market-is-cancelled #application-list .item-card-actions:empty { display: n
 
 /* 주최자 개별 결제취소 — 전액 환불 안내 */
 .host-refund-preview { margin-bottom: 6px; }
+
+/* ── 마켓 상세: 내 신청 현황 ──────────────────────────── */
+.my-app-box {
+  border: 2px solid #E0912F; background: #fdf3e0;
+  border-radius: 12px; padding: 12px 14px; margin: 12px 0;
+}
+.my-app-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.my-app-count {
+  background: #E0912F; color: #2A1C12; border-radius: 999px;
+  padding: 1px 9px; font-size: .76rem; font-weight: 700;
+}
+.my-app-list { list-style: none; padding: 0; margin: 0 0 8px; }
+.my-app-list li {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 6px 0; border-top: 1px dashed #e0cba8; font-size: .88rem;
+}
+.my-app-list li:first-child { border-top: none; }
+.my-app-booth { font-weight: 700; }
+.my-app-item { color: #6b5a4a; flex: 1 1 auto; min-width: 0; }
+.my-app-status {
+  font-size: .76rem; font-weight: 700; border-radius: 999px;
+  padding: 2px 9px; white-space: nowrap;
+}
+.my-app-status.ok   { background: #2f8f4e; color: #fff; }
+.my-app-status.wait { background: #E0912F; color: #2A1C12; }
+.my-app-status.bad  { background: #c0392b; color: #fff; }
+.my-app-link { font-size: .84rem; font-weight: 600; color: #2A1C12; }

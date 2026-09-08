@@ -12,6 +12,9 @@ import { findNewMarketRecipients } from '../utills/notificationSettings.js';
 import { attachBoothTypes, saveBoothTypes, normalizeBoothTypes, totalCapacityOf } from '../utills/boothTypes.js';
 // [환불 예상] 주최자도 결제취소 전에 얼마가 나가는지 알아야 합니다.
 import { buildRefundPreview } from '../utills/refundPolicy.js';
+// [지역] 카카오맵이 주는 '제주특별자치도' 같은 정식 명칭을 프로젝트 표기('제주')로 맞춥니다.
+//   맞추지 않으면 그 지역 마켓이 지역 필터·지도 개수·신규 마켓 알림에서 통째로 빠집니다.
+import { normalizeRegion } from '../utills/regions.js';
 
 // GET /api/markets?region=&sort=latest|eventDate|priceLow&includeExpired=
 export async function getMarketList(req, res) {
@@ -108,7 +111,8 @@ export async function getMarketDetail(req, res) {
 // POST /api/markets (로그인 필요, 주최자)
 export async function createMarket(req, res) {
   const { userId } = req.user;
-  let { title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplication, allowOvercapacity, boothPrice_origin, boothTypes } = req.body;
+  let { title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplication, allowOvercapacity, boothPrice_origin, boothTypes,
+    addressBase, addressDetail, postcode } = req.body;
   //console.log(req.body);
 
   if (!title || !eventDate_min || !eventDate_max || !locationName) {
@@ -136,10 +140,21 @@ export async function createMarket(req, res) {
     const [result] = await pool.query(
       `INSERT INTO markets (hostId, title, description, marketImage, locationName, region, latitude, longitude, eventDate_min, eventDate_max, boothPrice, isExpired, maxparticipants,recruitmentDate_min,recruitmentDate_max,allowDuplicateApplication ,allowOvercapacity, boothPrice_origin)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?, ?)`,
-      [userId, title, description || '', marketImage || null, locationName, region || null, latitude || 0, longitude || 0, eventDate_min, eventDate_max, boothPrice || 0, isExpired || 0, maxparticipants || 9999, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplicationVal, allowOvercapacityVal, boothPrice_origin]
+      [userId, title, description || '', marketImage || null, locationName, normalizeRegion(region) || region || null, latitude || 0, longitude || 0, eventDate_min, eventDate_max, boothPrice || 0, isExpired || 0, maxparticipants || 9999, recruitmentDate_min, recruitmentDate_max, allowDuplicateApplicationVal, allowOvercapacityVal, boothPrice_origin]
     );
 
     //console.log('req.body 전체:', req.body);
+
+    // [주소] 도로명·상세·우편번호를 따로 저장합니다.
+    //   locationName 에는 합쳐진 주소가 들어가는데, 그것만으로는 수정 화면에서
+    //   상세주소 칸을 복원할 수 없습니다. ("가가로 15 1000 100 1500" 처럼
+    //   상세가 숫자로 끝나면 어디까지가 도로명인지 알 수 없습니다)
+    if (addressBase !== undefined || addressDetail !== undefined || postcode !== undefined) {
+      await pool.query(
+        'UPDATE markets SET addressBase = ?, addressDetail = ?, postcode = ? WHERE marketId = ?',
+        [addressBase || null, addressDetail || null, postcode || null, result.insertId]
+      );
+    }
 
     // [부스 등급] 주최자가 등급을 넣었으면 함께 저장합니다.
     //   첫 번째 등급(프리미엄)의 금액을 markets.boothPrice 에도 반영합니다.
@@ -224,7 +239,9 @@ export async function updateMarketStatus(req, res) {
     recruitmentDate_min, recruitmentDate_max,
     boothPrice, locationName, region,
     latitude, longitude, maxParticipants,
-    marketImage, allowOvercapacity, allowDuplicateApplication
+    marketImage, allowOvercapacity, allowDuplicateApplication,
+    // [주소] 도로명·상세·우편번호를 따로 받습니다.
+    addressBase, addressDetail, postcode
   } = req.body;
 
   try {
@@ -257,7 +274,7 @@ export async function updateMarketStatus(req, res) {
     if (recruitmentDate_max) { fields.push('recruitmentDate_max = ?'); values.push(recruitmentDate_max); }
     if (boothPrice !== undefined) { fields.push('boothPrice = ?'); values.push(boothPrice); }
     if (locationName) { fields.push('locationName = ?'); values.push(locationName); }
-    if (region) { fields.push('region = ?'); values.push(region); }
+    if (region) { fields.push('region = ?'); values.push(normalizeRegion(region) || region); }
     if (latitude !== undefined) { fields.push('latitude = ?'); values.push(latitude); }
     if (longitude !== undefined) { fields.push('longitude = ?'); values.push(longitude); }
     if (maxParticipants !== undefined) {
@@ -270,6 +287,10 @@ export async function updateMarketStatus(req, res) {
     if (allowDuplicateApplication !== undefined) { fields.push('allowDuplicateApplication = ?'); values.push(allowDuplicateApplication ? 1 : 0); }
     // [수정] 예전에는 `if (marketImage)` 라서 null/'' 이 무시됐고, 이미지 삭제가 불가능했습니다.
     if (marketImage !== undefined) { fields.push('marketImage = ?'); values.push(marketImage || null); }
+    // [주소] 도로명·상세·우편번호도 함께 갱신합니다.
+    if (addressBase !== undefined) { fields.push('addressBase = ?'); values.push(addressBase || null); }
+    if (addressDetail !== undefined) { fields.push('addressDetail = ?'); values.push(addressDetail || null); }
+    if (postcode !== undefined) { fields.push('postcode = ?'); values.push(postcode || null); }
 
     // [부스 등급] 등급만 바꾸는 것도 엄연한 수정입니다.
     //   여기서 걸러버리면 등급 저장 코드까지 가지 못해, 주최자가 가격을 고쳐도

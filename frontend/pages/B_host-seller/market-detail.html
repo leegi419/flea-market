@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="../../common/css/style.css?v=5" />
+  <link rel="stylesheet" href="../../common/css/style.css?v=6" />
+    <link rel="stylesheet" href="../../common/css/toast.css?v=1" />
     <!-- [마켓 취소 환불 확인 모달] -->
     <link rel="stylesheet" href="../../common/css/market-cancel.css?v=2" />
   <link rel="stylesheet" href="css/host-seller.css?v=3" />
@@ -48,6 +49,11 @@
       <img id="market-image" class="market-image" alt="마켓 대표 이미지" style="display:none;" />
       <p id="market-description" class="market-description"></p>
       <a id="market-map-link" class="form-hint market-map-link" href="#" target="_blank" rel="noopener" style="display:none;">📍 카카오맵에서 위치 보기</a>
+
+      <!-- [내 신청 현황] 이 마켓에 내가 신청한 부스가 있으면 여기 보여줍니다.
+           예전에는 「내 부스 관리」로 가야만 알 수 있어서,
+           참가 신청을 누르고 나서야 중복이라는 걸 알게 됐습니다. -->
+      <div id="my-application-box" class="my-app-box" hidden></div>
 
       <div id="booth-select-panel">
         <h2>부스 신청</h2>
@@ -128,9 +134,10 @@
   </div>
 
   <script src="../../common/js/api.js?v=4"></script>
+    <script src="../../common/js/toast.js?v=1"></script>
   <script src="../../common/js/profile-link.js?v=1"></script>
   <script src="../../common/js/market-cancel.js?v=4"></script>
-  <script src="js/market.js?v=21"></script>
+  <script src="js/market.js?v=22"></script>
   <script src="js/market-detail-extra.js?v=4"></script>
   <script src="js/market-role-view.js?v=2"></script>
 </body>

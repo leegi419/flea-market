@@ -23,6 +23,41 @@ export const REGIONS = [
 
 const REGION_SET = new Set(REGIONS);
 
+/**
+ * [지역명 정규화] 카카오맵이 주는 이름을 프로젝트 표기로 맞춥니다.
+ *
+ *   카카오 `region_1depth_name` 은 행정 정식 명칭을 그대로 줍니다.
+ *     제주특별자치도 / 강원특별자치도 / 전북특별자치도 / 세종특별자치시
+ *   그런데 이 프로젝트의 지역 목록과 지도(region-map.js)는 짧은 표기를 씁니다.
+ *     제주 / 강원 / 전북 / 세종
+ *
+ *   맞추지 않으면 그 지역 마켓이 **지역 필터와 지도 개수에서 통째로 빠집니다.**
+ *   신규 마켓 알림의 관심 지역 대조도 어긋나 알림이 한 건도 안 갑니다.
+ *
+ *   접두 일치로 처리합니다. "제주특별자치도" 는 "제주" 로 시작하므로
+ *   행정명이 또 바뀌어도(예: 무슨무슨자치도) 대체로 걸립니다.
+ */
+export function normalizeRegion(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '';
+  if (REGION_SET.has(raw)) return raw;
+
+  // 긴 이름부터 짧은 표기로. '서울특별시' → '서울'
+  const hit = REGIONS.find((r) => raw.startsWith(r));
+  if (hit) return hit;
+
+  // 옛 표기나 축약형도 흡수합니다.
+  const ALIAS = {
+    '서울시': '서울', '부산시': '부산', '대구시': '대구', '인천시': '인천',
+    '광주시': '광주', '대전시': '대전', '울산시': '울산',
+    '경기도': '경기', '강원도': '강원', '제주도': '제주',
+    '충청북도': '충북', '충청남도': '충남',
+    '전라북도': '전북', '전라남도': '전남',
+    '경상북도': '경북', '경상남도': '경남',
+  };
+  return ALIAS[raw] || '';
+}
+
 /** 목록에 있는 지역인지 확인합니다. */
 export function isValidRegion(name) {
   return REGION_SET.has(String(name || '').trim());
@@ -46,4 +81,4 @@ export function filterValidRegions(list) {
   return out;
 }
 
-export default { REGIONS, isValidRegion, filterValidRegions };
+export default { REGIONS, isValidRegion, filterValidRegions, normalizeRegion };

@@ -66,12 +66,54 @@ async function loadMarketForEdit(marketId) {
     document.getElementById('recruitmentDate_min').value = market.recruitmentDate_min ? market.recruitmentDate_min.slice(0, 10) : '';
     document.getElementById('recruitmentDate_max').value = market.recruitmentDate_max ? market.recruitmentDate_max.slice(0, 10) : '';
 
-    // 주소 관련 hidden/표시 필드 채우기
-    document.getElementById('address').value = market.locationName || '';
-    document.getElementById('fullAddress').value = market.locationName || '';
+    // [날짜 제약] 채운 값이 오늘보다 이르면 min 을 낮춰 줍니다.
+    //   이미 지난 모집 기간을 가진 마켓을 수정할 때, 브라우저가 min 위반으로
+    //   폼 제출을 막아 "저장이 안 되는" 것처럼 보이기 때문입니다.
+    if (window.MarketDate) window.MarketDate.relaxMinForExisting();
+
+    // [주소] 저장된 주소는 「도로명주소 + 상세주소」가 합쳐진 한 덩어리입니다.
+    //   (markets 테이블에 locationName 컬럼 하나뿐이라 따로 보관하지 않습니다)
+    //
+    //   예전에는 그 전체를 address 칸에만 넣고 detailAddress 는 **비워 뒀습니다.**
+    //   그 상태에서 상세주소를 입력하면 updateFullAddress() 가
+    //   "전체주소 + 새 상세주소" 로 합쳐, 원래 있던 상세주소가 중복되거나 어긋났습니다.
+    //   화면상으로는 "입력해도 저장이 안 되는" 것처럼 보였습니다.
+    //
+    //   그래서 불러올 때 도로명 부분과 상세 부분으로 나눠 각 칸에 채웁니다.
+    //   markets 에 addressBase / addressDetail / postcode 를 따로 저장하므로
+    //   각 칸을 그대로 복원합니다. 합쳐진 문자열을 되돌려 자르는 방식은 쓰지 않습니다 —
+    //   "가가로 15 1000 100 1500" 처럼 상세가 숫자로 끝나면 어디까지가 도로명인지
+    //   알 수 없어서, 잘못 자르면 주소가 망가집니다.
+    //
+    //   예전 마켓은 addressBase 가 비어 있을 수 있어 locationName 으로 대신합니다.
+    const savedAddress = market.locationName || '';
+    document.getElementById('address').value = market.addressBase || savedAddress;
+    document.getElementById('detailAddress').value = market.addressDetail || '';
+    document.getElementById('fullAddress').value = savedAddress;
+    const pc = document.getElementById('postcode');
+    if (pc) pc.value = market.postcode || '';
     document.getElementById('region').value = market.region || '';
     document.getElementById('latitude').value = market.latitude || '';
     document.getElementById('longitude').value = market.longitude || '';
+
+    // [지도] 저장된 좌표로 지도를 옮깁니다.
+    //   이게 없으면 지도는 기본 위치(서울시청)에 머물러,
+    //   주소를 다시 검색하지 않는 한 "위치가 저장 안 된" 것처럼 보입니다.
+    //   marketmap.js 가 module 이라 늦게 로드될 수 있어 잠깐 기다렸다 다시 시도합니다.
+    const moveMap = () => {
+      if (!window.MarketMap) return false;
+      const moved = window.MarketMap.moveTo(market.latitude, market.longitude);
+      // 좌표가 없거나 0 인 마켓은 저장된 주소로 다시 찾습니다.
+      //   그대로 두면 지도는 서울시청에 머물고, 저장할 때도 좌표가 비어 나갑니다.
+      if (!moved && savedAddress) window.MarketMap.geocode(savedAddress);
+      return true;
+    };
+    if (!moveMap()) {
+      let tries = 0;
+      const timer = setInterval(() => {
+        if (moveMap() || (tries += 1) > 20) clearInterval(timer);
+      }, 100);
+    }
 
     // 기존 이미지 경로를 hidden input에 미리 채워둠 (새 이미지 업로드 안 하면 이 값 그대로 전송됨)
     document.getElementById('uploadedImagePath').value = market.marketImage || '';
@@ -162,6 +204,10 @@ function correctionMarketClick(marketId) {
       boothPrice: boothPriceNum,
       description: document.getElementById('description').value.trim(),
       locationName: fullAddressVal,
+      // [주소] 수정 화면에서 각 칸을 복원하려면 나눠서도 저장해야 합니다.
+      addressBase: document.getElementById('address')?.value.trim() || null,
+      addressDetail: document.getElementById('detailAddress')?.value.trim() || null,
+      postcode: document.getElementById('postcode')?.value.trim() || null,
       region: document.getElementById('region').value || null,
       latitude: document.getElementById('latitude').value || null,
       longitude: document.getElementById('longitude').value || null,
@@ -240,6 +286,11 @@ function setButtonLoading(btn, isLoading, loadingText, defaultText) {
   btn.textContent = isLoading ? loadingText : defaultText;
 }
 function renderAlert(message, type = 'error') {
+  // [토스트] 화면 맨 위 alert-box 는 폼이 길면 스크롤해야 보입니다.
+  //   버튼을 누른 자리 근처에 뜨도록 우측 하단 토스트로 함께 띄웁니다.
+  //   기존 alert-box 도 그대로 둡니다 — 토스트 스크립트를 못 불러온 화면에서도
+  //   메시지가 사라지지 않게 하려는 것입니다.
+  if (window.Toast) window.Toast.show(message, type);
   const box = document.getElementById('alert-box');
   if (!box) return;
   box.textContent = message;

@@ -1,0 +1,46 @@
+/* frontend/common/css/toast.css — 결과 알림 토스트 */
+
+.toast-root {
+  position: fixed; right: 18px; bottom: 18px; z-index: 1200;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: min(380px, calc(100vw - 36px));
+  pointer-events: none;   /* 빈 영역이 화면 클릭을 막지 않게 */
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex; align-items: flex-start; gap: 9px;
+  background: #FBF6EC; border: 2px solid #2A1C12; border-radius: 12px;
+  box-shadow: 4px 4px 0 rgba(42, 28, 18, .25);
+  padding: 12px 14px; font-size: .92rem; line-height: 1.5;
+  animation: toast-in .18s ease-out;
+}
+.toast.is-leaving { opacity: 0; transform: translateY(6px); transition: opacity .2s, transform .2s; }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.toast-success { border-color: #2f8f4e; background: #f6fbf7; }
+.toast-error   { border-color: #c0392b; background: #fdeaea; }
+.toast-warn    { border-color: #E0912F; background: #fdf3e0; }
+
+.toast-icon { flex: 0 0 auto; }
+.toast-text { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+.toast-close {
+  flex: 0 0 auto; background: none; border: none; cursor: pointer;
+  font-size: 1.2rem; line-height: 1; color: #6b5a4a; padding: 0 2px;
+}
+.toast-close:hover { color: #2A1C12; }
+
+/* 좁은 화면에서는 아래 전체 폭으로 */
+@media (max-width: 480px) {
+  .toast-root { left: 12px; right: 12px; bottom: 12px; max-width: none; }
+}
+
+/* 애니메이션을 줄이도록 설정한 사용자 존중 */
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+  .toast.is-leaving { transition: none; }
+}

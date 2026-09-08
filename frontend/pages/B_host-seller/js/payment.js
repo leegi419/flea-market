@@ -34,9 +34,18 @@ const PERIOD_LABELS = [
 ];
 
 async function historys(period) {
+  // [역할] 지금 보고 있는 모드를 함께 보냅니다.
+  //   이 사이트는 주최자 계정도 판매자로 전환해 부스를 신청합니다.
+  //   서버가 계정 종류(userType)만 보면, 주최자 계정이 **판매자 모드로 열어도**
+  //   "내가 주최한 마켓" 을 찾아 0건이 나옵니다.
+  //   (주최한 마켓이 없으면 "정산된 내역이 없어요" 만 뜹니다)
+  //
+  //   sessionStorage 의 activeRole 이 화면 상단 전환 버튼과 같은 값입니다.
+  const role = sessionStorage.getItem('activeRole') === 'host' ? 'host' : 'seller';
+
   return callApi('/payments/history', {
     method: 'POST',
-    body: { period: period || settlementPeriod },
+    body: { period: period || settlementPeriod, role },
   });
 }
 
@@ -151,17 +160,64 @@ function renderPaymentGroups() {
   const tabLabel = document.getElementById('payment-tab-label');
   if (tabLabel) tabLabel.textContent = isHost ? '정산 내역' : '결제 내역';
 
-  const head = `<h2 class="settle-title">${isHost ? '정산 내역' : '결제 내역'}</h2>` + renderPeriodTabs();
+  // 제목은 두 역할을 다 담으므로 모드에 따라 바꾸지 않습니다.
+  const head = `<h2 class="settle-title">정산 · 결제 내역</h2>` + renderPeriodTabs();
 
-  if (!d.groups || d.groups.length === 0) {
-    ui.innerHTML = head + `<p class="list-empty">${isHost
-      ? '이 기간에 정산할 내역이 없어요.' : '이 기간에 결제 내역이 없어요.'}</p>`;
+  // [버그 수정] 예전에는 여기서 `d.groups` 가 비면 바로 빈 화면을 내고 끝냈습니다.
+  //   `d.groups` 는 **현재 모드의 것만** 담기 때문에,
+  //   주최자가 판매자 모드로 보면 groups 가 비어 → 정산 4건이 있어도 "없어요" 로 끝났습니다.
+  //   양쪽(d.host / d.seller)을 다 살펴본 뒤에 비었는지 판단해야 합니다. (아래 sections 에서)
+
+  // [양쪽 모두 표시] 주최자 정산과 판매자 결제를 한 화면에 나눠 보여줍니다.
+  //   예전에는 현재 모드의 것만 그려서, 주최자 모드에서는 내가 결제한 내역이,
+  //   판매자 모드에서는 내가 주최한 정산이 통째로 사라졌습니다.
+  //   두 역할을 오가는 계정은 모드를 바꿔가며 봐야 했고, 그나마도 같은 목록이
+  //   반복돼 무엇이 수입이고 무엇이 지출인지 알 수 없었습니다.
+  //
+  //   지금 보고 있는 모드를 위에, 다른 역할을 아래에 둡니다.
+  const sections = [];
+  if (d.host && d.host.groups && d.host.groups.length > 0) {
+    sections.push({ key: 'host', title: '정산 내역', desc: '내가 주최한 마켓에서 받을 금액이에요.',
+      groups: d.host.groups, summary: d.host.summary });
+  }
+  if (d.seller && d.seller.groups && d.seller.groups.length > 0) {
+    sections.push({ key: 'seller', title: '결제 내역', desc: '내가 신청한 부스에 낸 금액이에요.',
+      groups: d.seller.groups, summary: d.seller.summary });
+  }
+  // 현재 모드를 먼저 보여줍니다.
+  sections.sort((a, b2) => (a.key === d.role ? -1 : b2.key === d.role ? 1 : 0));
+
+  if (sections.length === 0) {
+    ui.innerHTML = head + '<p class="list-empty">이 기간에 정산·결제 내역이 없어요.</p>';
     bindPeriodTabs(ui);
     return;
   }
 
-  ui.innerHTML = head + renderSummary(d) + d.groups.map((group) => {
-    const isExpanded = expandedMarketIds.has(String(group.marketId));
+  ui.innerHTML = head + sections.map((sec) => `
+    <section class="settle-section">
+      <h3 class="settle-section-title ${sec.key}">
+        ${sec.title}<span class="settle-section-count">${sec.groups.length}개 마켓</span>
+      </h3>
+      <p class="settle-section-desc">${sec.desc}</p>
+      ${renderSummary({ role: sec.key, summary: sec.summary })}
+      ${renderGroupCards(sec.groups, sec.key === 'host')}
+    </section>`).join('');
+
+  bindPeriodTabs(ui);
+  ui.querySelectorAll('[data-action="toggle-detail"]').forEach((btn) => {
+    btn.addEventListener('click', () => handleToggleDetail(btn.dataset.rowKey));
+  });
+}
+
+/** 마켓 카드 목록. 정산·결제 양쪽에서 같은 모양으로 씁니다. */
+function renderGroupCards(groups, isHost) {
+  const role = isHost ? 'host' : 'seller';
+  return groups.map((group) => {
+    // 같은 마켓이 정산·결제 양쪽에 나올 수 있어(내가 연 마켓에 내가 신청한 경우)
+    // 펼침 상태와 요소 id 에 역할을 붙여 구분합니다. 안 그러면 한쪽을 펼칠 때
+    // 다른 쪽도 같이 펼쳐지고, id 가 중복돼 화면이 어긋납니다.
+    const rowKey = role + ':' + group.marketId;
+    const isExpanded = expandedMarketIds.has(rowKey);
     const badge = SETTLE_BADGE[group.settlementStatus] || SETTLE_BADGE.pending;
     const period = group.eventDateMin === group.eventDateMax
       ? group.eventDateMin : `${group.eventDateMin} ~ ${group.eventDateMax}`;
@@ -183,19 +239,14 @@ function renderPaymentGroups() {
         <span class="settle-net">${isHost ? '정산' : '지출'} <b>${won(group.netAmount)}</b></span>
       </div>
 
-      <button type="button" class="btn btn-outline btn-sm" data-action="toggle-detail" data-market-id="${group.marketId}">
+      <button type="button" class="btn btn-outline btn-sm" data-action="toggle-detail" data-row-key="${rowKey}">
         ${isExpanded ? '접기' : '부스별 보기'}
       </button>
-      <div id="detail-${group.marketId}" class="detail-wrap ${isExpanded ? 'open' : ''}">
+      <div id="detail-${role}-${group.marketId}" class="detail-wrap ${isExpanded ? 'open' : ''}">
         ${isExpanded ? renderGroupDetail(group, isHost) : ''}
       </div>
     </div>`;
   }).join('');
-
-  bindPeriodTabs(ui);
-  ui.querySelectorAll('[data-action="toggle-detail"]').forEach((btn) => {
-    btn.addEventListener('click', () => handleToggleDetail(btn.dataset.marketId));
-  });
 }
 
 function bindPeriodTabs(ui) {
@@ -234,8 +285,8 @@ function renderGroupDetail(group, isHost) {
       </table>
     </div>`;
 }
-function handleToggleDetail(marketId) {
-  const key = String(marketId);
+function handleToggleDetail(rowKey) {
+  const key = String(rowKey);
   if (expandedMarketIds.has(key)) {
     expandedMarketIds.delete(key);
   } else {

@@ -1,4 +1,7 @@
 import pool from '../config/db.js';
+// [역할] 정산 내역은 "지금 어느 모드로 보고 있는지" 로 갈라야 합니다.
+//   userType 만 보면 주최자 계정이 판매자 모드로 전환해도 주최자 조회가 나갑니다.
+import { normalizeActiveRole } from '../utills/rolePolicy.js';
 import { verifyPayment, cancelPayment } from '../services/paymentService.js';
 import { calculateRefundRate } from '../utills/refundPolicy.js'
 import { createNotification } from '../services/notificationService.js';
@@ -366,7 +369,23 @@ export async function paymentHistory(req, res) {
     if (me.length === 0) {
       return res.status(404).json({ success: false, data: [], message: '사용자를 찾을 수 없습니다.' });
     }
-    const isHost = Number(me[0].userType) === 1;
+    // [역할 판정] 이 사이트는 주최자도 판매자로 전환해 부스를 신청합니다.
+    //   예전에는 userType 만 봐서, 주최자 계정이 **판매자 모드로 정산 내역을 열어도**
+    //   `m.hostId = 나` 로 조회했습니다. 주최한 마켓이 없으면 결과가 0건이라
+    //   "정산된 내역이 없어요" 만 떴습니다. 실제로는 판매자로 결제한 건이 있는데도요.
+    //
+    //   토큰에 담긴 activeRole(지금 보고 있는 모드)을 우선합니다.
+    //   ?role= 로 명시하면 그것을 따르고, 둘 다 없으면 계정 종류로 되돌아갑니다.
+    const userType = Number(me[0].userType);
+    const accountIsHost = userType === 1;
+    // POST 로 호출되므로 body 도 함께 봅니다. (period 와 같은 방식)
+    const requestedRole = String(req.query?.role || req.body?.role || '').trim();
+
+    const isHost = requestedRole === 'host' ? true
+      : requestedRole === 'seller' ? false
+      : req.user.activeRoleFromToken
+        ? normalizeActiveRole(userType, req.user.activeRole) === 'host'
+        : accountIsHost;
 
     // 주최자는 자기 마켓의 모든 결제, 판매자는 자기가 낸 결제.
     const [rows] = await pool.query(
@@ -381,26 +400,50 @@ export async function paymentHistory(req, res) {
          hu.nickname AS hostNickname,
          IFNULL(p.amount, 0) AS amount,
          IFNULL(p.refundAmount, 0) AS refundAmount,
-         p.paidAt
+         p.paidAt,
+         -- [역할 구분] 이 건이 나에게 어떤 성격인지 표시합니다.
+         --   내가 주최한 마켓이면 정산(수입), 내가 신청한 부스면 결제(지출)입니다.
+         --   한 사람이 둘 다 가질 수 있어 행마다 구분이 필요합니다.
+         (m.hostId = ?) AS isHostRow,
+         (a.sellerId = ?) AS isSellerRow
        FROM applications a
        INNER JOIN markets m ON a.marketId = m.marketId
        INNER JOIN users u ON a.sellerId = u.userId
        INNER JOIN users hu ON m.hostId = hu.userId
        LEFT JOIN payments p ON a.applicationId = p.applicationId
-      WHERE ${isHost ? 'm.hostId = ?' : 'a.sellerId = ?'}
+      -- 주최한 마켓과 신청한 부스를 **한 번에** 가져옵니다.
+      --   예전에는 역할에 따라 한쪽만 조회해서, 주최자 모드에서는 내가 결제한 내역이,
+      --   판매자 모드에서는 내가 주최한 정산이 통째로 사라졌습니다.
+      --   두 역할을 오가는 계정은 화면을 바꿔가며 봐야 했고, 그나마도 같은 목록이
+      --   반복돼 무엇이 수입이고 무엇이 지출인지 알 수 없었습니다.
+      WHERE (m.hostId = ? OR a.sellerId = ?)
         AND a.status IN ('Paid', 'Refunded', 'RefundRequested')
         ${periodSql}
       ORDER BY m.eventDate_max DESC, a.applicationId ASC`,
-      [userId]
+      [userId, userId, userId, userId]
     );
 
     // 마켓별로 묶고 합계를 서버에서 냅니다.
     //   화면마다 따로 더하면 계산이 갈립니다. 정산 금액은 한 곳에서만 계산해야 합니다.
+    // [역할별로 나눠 담기] 같은 마켓에서 내가 주최자이면서 판매자일 수도 있습니다.
+    //   (내가 연 마켓에 내가 부스를 신청한 경우)
+    //   그때 한 덩어리로 묶으면 수입과 지출이 섞여 합계가 틀립니다.
+    //   그래서 키를 「역할 + 마켓」으로 잡습니다.
     const groupMap = new Map();
     for (const r of rows) {
-      const key = String(r.marketId);
+      const asHost = Number(r.isHostRow) === 1;
+      const asSeller = Number(r.isSellerRow) === 1;
+
+      // 한 행이 두 역할에 다 해당하면 양쪽에 각각 담습니다.
+      const roles = [];
+      if (asHost) roles.push('host');
+      if (asSeller) roles.push('seller');
+
+      for (const role of roles) {
+      const key = role + ':' + r.marketId;
       if (!groupMap.has(key)) {
         groupMap.set(key, {
+          role,
           marketId: r.marketId,
           marketTitle: r.marketTitle,
           hostNickname: r.hostNickname,
@@ -434,6 +477,7 @@ export async function paymentHistory(req, res) {
       g.grossAmount += amount;
       g.refundAmount += refund;
       g.netAmount += amount - refund;
+      }
     }
 
     const groups = [...groupMap.values()].map((g) => ({
@@ -443,25 +487,42 @@ export async function paymentHistory(req, res) {
     }));
 
     const sum = (list, key) => list.reduce((acc, g) => acc + g[key], 0);
-    const settled = groups.filter((g) => g.settlementStatus === 'settled');
-    const pending = groups.filter((g) => g.settlementStatus === 'pending');
+
+    /** 역할 하나에 대한 요약을 냅니다. 주최자는 수입, 판매자는 지출입니다. */
+    const summarize = (list) => {
+      const settled = list.filter((g) => g.settlementStatus === 'settled');
+      const pending = list.filter((g) => g.settlementStatus === 'pending');
+      return {
+        marketCount: list.length,
+        boothCount: sum(list, 'boothCount'),
+        grossAmount: sum(list, 'grossAmount'),
+        refundAmount: sum(list, 'refundAmount'),
+        netAmount: sum(list, 'netAmount'),
+        // 확정 = 끝난 마켓, 대기 = 진행 중 (아직 환불이 나올 수 있음)
+        settledAmount: sum(settled, 'netAmount'),
+        pendingAmount: sum(pending, 'netAmount'),
+      };
+    };
+
+    const hostGroups = groups.filter((g) => g.role === 'host');
+    const sellerGroups = groups.filter((g) => g.role === 'seller');
+
+    // 지금 보고 있는 모드의 것을 groups 로 내려줍니다. (기존 화면 호환)
+    //   host / seller 를 따로도 담아, 화면이 두 내역을 함께 보여줄 수 있게 합니다.
+    const current = isHost ? hostGroups : sellerGroups;
 
     return res.status(200).json({
       success: true,
       data: {
         role: isHost ? 'host' : 'seller',
         period,
-        groups,
-        summary: {
-          marketCount: groups.length,
-          boothCount: sum(groups, 'boothCount'),
-          grossAmount: sum(groups, 'grossAmount'),
-          refundAmount: sum(groups, 'refundAmount'),
-          netAmount: sum(groups, 'netAmount'),
-          // 확정 = 끝난 마켓, 대기 = 진행 중 (아직 환불이 나올 수 있음)
-          settledAmount: sum(settled, 'netAmount'),
-          pendingAmount: sum(pending, 'netAmount'),
-        },
+        // 예전 화면이 data.groups 를 그대로 쓰고 있어 형태를 바꾸지 않습니다.
+        groups: current,
+        summary: summarize(current),
+        // [양쪽 모두] 주최자는 정산(수입), 판매자는 결제(지출)로 나눠 담습니다.
+        //   한 계정이 두 역할을 다 가질 수 있어, 화면이 둘을 함께 보여줄 수 있어야 합니다.
+        host: { groups: hostGroups, summary: summarize(hostGroups) },
+        seller: { groups: sellerGroups, summary: summarize(sellerGroups) },
       },
       // [버그 수정] 내역이 없을 때 500 을 반환하고 있었습니다.
       //   신규 주최자는 화면이 그냥 깨졌습니다. 빈 목록은 오류가 아니라 정상 상태입니다.

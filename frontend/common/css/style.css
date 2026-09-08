@@ -451,3 +451,20 @@ body.market-is-cancelled #application-list .item-card-actions:empty { display: n
 .my-app-status.wait { background: #E0912F; color: #2A1C12; }
 .my-app-status.bad  { background: #c0392b; color: #fff; }
 .my-app-link { font-size: .84rem; font-weight: 600; color: #2A1C12; }
+
+/* ── 정산·결제 내역 섹션 구분 ─────────────────────────── */
+.settle-section { margin-bottom: 22px; }
+.settle-section-title {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 1.02rem; margin: 0 0 2px;
+  padding-left: 10px; border-left: 5px solid #d9cdb8;
+}
+.settle-section-title.host   { border-left-color: #E0912F; }
+.settle-section-title.seller { border-left-color: #2f8f4e; }
+.settle-section-count {
+  background: #e6ddcd; color: #4a3a2a; border-radius: 999px;
+  padding: 1px 9px; font-size: .74rem; font-weight: 700;
+}
+.settle-section-desc {
+  color: #6b5a4a; font-size: .84rem; margin: 0 0 10px; padding-left: 15px;
+}

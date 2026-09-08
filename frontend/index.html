@@ -16,6 +16,9 @@
   <!-- [공통] 상단 고정 네비게이션 바 (모든 화면 공통) -->
   <link rel="stylesheet" href="common/css/global-nav.css?v=4" />
   <script src="common/js/global-nav.js?v=5" defer></script>
+  <!-- [모바일 최적화] 반드시 <head> 맨 마지막에 둡니다 (기존 CSS 를 덮어써야 함) -->
+  <link rel="stylesheet" href="common/css/mobile.css?v=3" />
+  <script src="common/js/mobile-nav.js?v=3" defer></script>
 </head>
 <body>
   <div class="board">
@@ -37,7 +40,13 @@
       <p class="sub">로그인 없이도 동네 곳곳의 벼룩시장을 먼저 둘러볼 수 있어요.</p>
 
       <div class="filter-strip">
-        <label class="filter-field">
+        <!-- [화면 정리] 「지역」 select 은 아래 「전국 한눈에 보기」와 기능이 완전히 겹쳐서 화면에서 숨겼습니다.
+             태그 자체를 지우지 않는 이유:
+               region-map.js 가 지역을 클릭할 때 이 select 의 값을 바꾸고 change 이벤트를 쏴서
+               main.js 의 필터 로직을 태우는 구조입니다. 지우면 지도 클릭 필터가 통째로 죽습니다.
+             그래서 「보이지만 않게」 하고 동작은 그대로 둡니다.
+             (style.css 의 [hidden]{display:none!important} 가 .filter-field 의 display:flex 를 이깁니다) -->
+        <label class="filter-field" id="region-filter-field" hidden>
           지역
           <select id="region-filter">
             <option value="">전체</option>

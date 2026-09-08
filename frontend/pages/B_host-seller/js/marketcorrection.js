@@ -238,7 +238,8 @@ function correctionMarketClick(marketId) {
       if (res && res.success) {
         renderAlert('마켓 정보가 수정됐어요!', 'success');
         setTimeout(() => {
-          window.location.href = 'mymarketpage.html';
+          // [수정] 고정 주소 대신, 들어온 화면으로 되돌립니다.
+          window.location.href = getReturnTarget(marketId).url;
         }, 1000);
       } else {
         renderAlert(res?.message || '수정에 실패했어요. 입력값을 확인해주세요.');
@@ -249,6 +250,51 @@ function correctionMarketClick(marketId) {
       setButtonLoading(submitBtn, false, '수정 중...', '수정하기');
     }
   });
+}
+
+// ============================================
+// 3-1. [추가] 수정을 마친 뒤 돌아갈 화면 계산
+//
+//   예전에는 저장이 끝나면 무조건 'mymarketpage.html' 로 갔습니다.
+//   마켓 상세에서 「마켓 정보 수정하기」를 눌러 들어온 사람은
+//   방금 보던 마켓으로 돌아가는 게 자연스러운데, 매번 목록으로 튕겼습니다.
+//
+//   판단 순서
+//     1) 주소의 ?from=detail  (market.js 가 붙여 보냅니다)
+//     2) 없으면 document.referrer 로 추측 (예전 링크로 들어온 경우 대비)
+//     3) 둘 다 아니면 기존대로 「내 마켓 관리」
+//
+//   주소 형식(.html 유무)은 지금 보고 있는 화면을 그대로 따라갑니다.
+// ============================================
+function getReturnTarget(marketId) {
+  const ext = /\.html$/i.test(window.location.pathname) ? '.html' : '';
+  const from = new URLSearchParams(window.location.search).get('from');
+
+  let cameFromDetail = from === 'detail';
+  if (!from) {
+    try {
+      cameFromDetail = /market-detail/i.test(document.referrer || '');
+    } catch (e) {
+      cameFromDetail = false;
+    }
+  }
+
+  if (cameFromDetail && marketId) {
+    return {
+      url: `market-detail${ext}?marketId=${encodeURIComponent(marketId)}`,
+      label: '\u2190 마켓 상세로 돌아가기',
+    };
+  }
+  return { url: `mymarketpage${ext}`, label: '\u2190 내 마켓 관리로 돌아가기' };
+}
+
+/** 화면 아래 「돌아가기」 링크도 같은 곳을 가리키게 맞춥니다. */
+function applyBackLink(marketId) {
+  const link = document.getElementById('correction-back-link');
+  if (!link) return;
+  const target = getReturnTarget(marketId);
+  link.setAttribute('href', target.url);
+  link.textContent = target.label;
 }
 
 // ============================================
@@ -314,6 +360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderAlert('수정할 마켓 정보를 찾을 수 없습니다. (marketId 없음)');
     return;
   }
+  applyBackLink(marketId);             // [추가] 돌아가기 링크를 들어온 화면에 맞춤
   await loadMarketForEdit(marketId);   // 기존 값 채우기
   correctionMarketClick(marketId); 
 });

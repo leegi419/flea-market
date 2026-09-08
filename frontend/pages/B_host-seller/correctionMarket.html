@@ -20,13 +20,16 @@
     <script src="../../common/js/toast.js?v=1"></script>
     <script src="../../common/js/booth-types.js?v=3"></script>
     <script type="module" src="js/marketdate.js?v=3"></script>
-    <script type="module" src="js/marketcorrection.js?v=9"></script>
+    <script type="module" src="js/marketcorrection.js?v=10"></script>
     <!-- <script src="../../common/js/api.js"></script> -->
     <!-- [C-01] 역할별 첫 화면 분기 / 주최자 전용 화면 접근 차단 -->
     <script src="../../common/js/role-routing.js?v=5"></script>
     <!-- [공통] 상단 고정 네비게이션 바 (모든 화면 공통) -->
     <link rel="stylesheet" href="../../common/css/global-nav.css?v=4" />
     <script src="../../common/js/global-nav.js?v=5" defer></script>
+  <!-- [모바일 최적화] 반드시 <head> 맨 마지막에 둡니다 (기존 CSS 를 덮어써야 함) -->
+  <link rel="stylesheet" href="../../common/css/mobile.css?v=3" />
+  <script src="../../common/js/mobile-nav.js?v=3" defer></script>
 </head>
 
 <body>
@@ -166,7 +169,9 @@
             </form>
         </div>
 
-        <a href="mymarketpage.html" class="back-link">← 내 마켓 관리로 돌아가기</a>
+        <!-- [수정] 들어온 화면에 맞춰 marketcorrection.js 의 applyBackLink() 가
+             href 와 글자를 바꿔 끼웁니다. 아래 값은 스크립트가 못 돌 때의 기본값입니다. -->
+        <a href="mymarketpage.html" id="correction-back-link" class="back-link">← 내 마켓 관리로 돌아가기</a>
     </div>
 </body>
 

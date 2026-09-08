@@ -1118,7 +1118,13 @@ function handleMarketEditClick() {
       renderAlert('마켓 정보를 찾을 수 없어요.');
       return;
     }
-    window.location.href = `correctionMarket?marketId=${marketId}`;
+    // [수정] 「어디서 눌렀는지」를 함께 넘깁니다.
+    //   예전에는 수정 저장이 끝나면 무조건 「내 마켓 관리」로 튕겼습니다.
+    //   상세 화면에서 눌렀으면 저장 후 그 마켓 상세로 돌아와야 자연스럽습니다.
+    //   주소 형식(.html 유무)은 지금 보고 있는 화면을 그대로 따라갑니다.
+    //   (개발 서버가 한쪽으로 리다이렉트하면서 쿼리스트링을 버리는 문제가 있었습니다)
+    const ext = /\.html$/i.test(window.location.pathname) ? '.html' : '';
+    window.location.href = `correctionMarket${ext}?marketId=${marketId}&from=detail`;
   });
 }
 
